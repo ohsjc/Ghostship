@@ -21,6 +21,14 @@ The finished exe is copied into the game folder (`%USERPROFILE%\Projects\Ghostsh
 The first build takes about 30-60 minutes because it compiles all the dependencies.
 Later builds only recompile changed files and usually take a few minutes.
 
+## Troubleshooting: CMake symbolic-link permission
+
+If CMake reports `file failed to create symbolic link` at `CMakeLists.txt:580`,
+enable **Developer Mode** in Windows Settings (`System` → `For developers` → `Developer Mode`),
+then rerun `2-Build-Ghostship.cmd`. This lets CMake create the ImGui link without running
+every build as administrator. The partially completed configure can be retried; a clean build
+is not normally needed.
+
 ## What the build does
 
 | Step | Action |
