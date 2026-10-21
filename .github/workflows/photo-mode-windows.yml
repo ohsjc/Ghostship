@@ -81,6 +81,7 @@ jobs:
         run: |
           mkdir pkg
           Move-Item build/x64/Ghostship.exe pkg/
+          Move-Item build/x64/ghostship.o2r pkg/
           Get-ChildItem build/x64 -Filter *.dll | Move-Item -Destination pkg/
           if (Test-Path build/x64/.tcc) { Move-Item build/x64/.tcc pkg/.tcc }
       - uses: actions/upload-artifact@v4
