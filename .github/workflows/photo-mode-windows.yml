@@ -72,6 +72,10 @@ jobs:
           $env:VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT
           cmake -S . -B "build/x64" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DPython3_EXECUTABLE="$(python -c 'import sys; print(sys.executable)')"
           cmake --build ./build/x64 --target Ghostship
+      - uses: actions/download-artifact@v4
+        with:
+          name: ghostship-o2r
+          path: build/x64
       - name: Package
         shell: pwsh
         run: |
