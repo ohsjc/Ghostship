@@ -537,4 +537,9 @@ void BetterLevelSelect_HandleReload() {
     self.forceReload = true;
 }
 
+const LevelSelectEntry* BetterLevelSelect_GetEntries(size_t* count) {
+    *count = ARRAY_COUNT(entries);
+    return entries;
+}
+
 static RegisterShipInitFunc initFunc(Init);

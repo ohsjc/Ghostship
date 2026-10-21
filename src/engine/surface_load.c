@@ -1,6 +1,7 @@
 #include <libultra/types.h>
 
 #include "sm64.h"
+#include "port/mods/PhotoMode.h"
 #include "engine/math_util.h"
 #include "game/ingame_menu.h"
 #include "graph_node.h"
@@ -777,8 +778,18 @@ void load_object_collision_model(void) {
         gCurrentObject->oDrawingDistance = gCurrentObject->oCollisionDistance;
     }
 
+    // Photo mode measures from the free camera instead of Mario, keeping surface usage within the pools.
+    f32 tangibleCheckDist = marioDist;
+    f32 camX, camY, camZ;
+    if (PhotoMode_GetRoomProbePos(&camX, &camY, &camZ)) {
+        f32 dx = gCurrentObject->oPosX - camX;
+        f32 dy = gCurrentObject->oPosY - camY;
+        f32 dz = gCurrentObject->oPosZ - camZ;
+        tangibleCheckDist = sqrtf(dx * dx + dy * dy + dz * dz);
+    }
+
     // Update if no Time Stop, in range, and in the current room.
-    if (!(gTimeStopState & TIME_STOP_ACTIVE) && marioDist < tangibleDist
+    if (!(gTimeStopState & TIME_STOP_ACTIVE) && tangibleCheckDist < tangibleDist
         && !(gCurrentObject->activeFlags & ACTIVE_FLAG_IN_DIFFERENT_ROOM)) {
         collisionData++;
         transform_object_vertices(&collisionData, vertexData);

@@ -4,6 +4,7 @@
 
 #include "prevent_bss_reordering.h"
 #include "sm64.h"
+#include "port/mods/PhotoMode.h"
 #include "camera.h"
 #include "seq_ids.h"
 #include "dialog_ids.h"
@@ -11661,6 +11662,9 @@ Gfx *geo_camera_fov(s32 callContext, struct GraphNode *g, UNUSED void *context) 
     }
 
     perspective->fov = sFOVState.fov;
+    if (PhotoMode_GetFov(&perspective->fov)) {
+        return NULL;
+    }
     shake_camera_fov(perspective);
     return NULL;
 }

@@ -1,6 +1,7 @@
 #include <libultra/types.h>
 
 #include "sm64.h"
+#include "port/mods/PhotoMode.h"
 #include "actors/common1.h"
 #include "gfx_dimensions.h"
 #include "game_init.h"
@@ -406,6 +407,9 @@ void render_hud_camera_status(void) {
  */
 void render_hud(void) {
     s16 hudDisplayFlags = gHudDisplay.flags;
+    if (PhotoMode_IsActive() && CVarGetInteger(CVAR_ENHANCEMENT("PhotoMode.HideHud"), 1)) {
+        return;
+    }
     if (hudDisplayFlags == HUD_DISPLAY_NONE) {
         sPowerMeterHUD.animation = POWER_METER_HIDDEN;
         sPowerMeterStoredHealth = 8;

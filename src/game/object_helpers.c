@@ -3,6 +3,7 @@
 #include "port/events/list/PlayerEvent.h"
 
 #include "sm64.h"
+#include "port/mods/PhotoMode.h"
 #include "area.h"
 #include "behavior_actions.h"
 #include "behavior_data.h"
@@ -175,9 +176,15 @@ Gfx *geo_switch_area(s32 callContext, struct GraphNode *node, UNUSED void *conte
         if (gMarioObject == NULL) {
             switchCase->selectedCase = 0;
         } else {
+            f32 probeX = gMarioObject->oPosX;
+            f32 probeY = gMarioObject->oPosY;
+            f32 probeZ = gMarioObject->oPosZ;
+            // Photo mode shows the rooms around the free camera.
+            PhotoMode_GetRoomProbePos(&probeX, &probeY, &probeZ);
+
             gFindFloorIncludeSurfaceIntangible = TRUE;
 
-            find_floor(gMarioObject->oPosX, gMarioObject->oPosY, gMarioObject->oPosZ, &sp20);
+            find_floor(probeX, probeY, probeZ, &sp20);
 
             if (sp20) {
                 gMarioCurrentRoom = sp20->room;

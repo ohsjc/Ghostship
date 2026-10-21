@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 #include "sm64.h"
+#include "port/mods/PhotoMode.h"
 #include "area.h"
 #include "audio/external.h"
 #include "behavior_actions.h"
@@ -1713,6 +1714,10 @@ void func_sh_8025574C(void) {
  */
 s32 execute_mario_action(UNUSED struct Object *o) {
     s32 inLoop = TRUE;
+
+    if (PhotoMode_UpdateMario()) {
+        return 0;
+    }
 
     if (gMarioState->action) {
         gMarioState->marioObj->header.gfx.node.flags &= ~GRAPH_RENDER_INVISIBLE;

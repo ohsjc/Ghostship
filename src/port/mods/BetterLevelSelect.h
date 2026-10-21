@@ -38,3 +38,5 @@ struct LevelSelectEntry {
 };
 
 void BetterLevelSelect_HandleReload();
+const LevelSelectEntry* BetterLevelSelect_GetEntries(size_t* count);
+s32 BetterLevelSelect_UpdateMenu(s16 arg, s32 b);

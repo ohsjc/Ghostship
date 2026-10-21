@@ -1,6 +1,7 @@
 #include <libultraship.h>
 
 #include "sm64.h"
+#include "port/mods/PhotoMode.h"
 #include "gfx_dimensions.h"
 #include "audio/external.h"
 #include "buffers/buffers.h"
@@ -794,6 +795,7 @@ void thread5_iteration(void){
         read_controller_inputs();
     }
     mirror_mode_invert_input();
+    PhotoMode_ProcessInput();
     if (CVarGetInteger("gFrameAdvance", 0) == 1) {
         bool shouldTick = CVarGetInteger("gFrameAdvanceTick", 0);
         if (shouldTick) {

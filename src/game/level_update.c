@@ -33,6 +33,7 @@
 #include "port/events/list/EngineEvent.h"
 #include "port/events/list/PlayerEvent.h"
 #include "port/mods/PortEnhancements.h"
+#include "port/mods/PhotoMode.h"
 
 #define PLAY_MODE_NORMAL 0
 #define PLAY_MODE_PAUSED 2
@@ -246,6 +247,19 @@ void fade_into_special_warp(u32 arg, u32 color) {
     level_set_transition(30, NULL);
 
     warp_special(arg);
+}
+
+s32 level_is_in_normal_play_mode(void) {
+    return sCurrPlayMode == PLAY_MODE_NORMAL;
+}
+
+/**
+ * Leave the current level and enter levelNum at its default (MARIO_POS) spawn.
+ */
+void warp_to_level_default_spawn(s16 levelNum) {
+    sWarpDest.type = WARP_TYPE_NOT_WARPING;
+    sDelayedWarpOp = WARP_OP_NONE;
+    fade_into_special_warp(levelNum, 0);
 }
 
 void stub_level_update_1(void) {
@@ -1201,7 +1215,7 @@ s32 init_level(void) {
                 set_mario_action(gMarioState, ACT_IDLE, 0);
             } else if (!gDebugLevelSelect) {
                 if (gMarioState->action != ACT_UNINITIALIZED) {
-                    if (save_file_exists(gCurrSaveFileNum - 1) == TRUE) {
+                    if (save_file_exists(gCurrSaveFileNum - 1) == TRUE || PhotoMode_IsEnteringLevel()) {
                         set_mario_action(gMarioState, ACT_IDLE, 0);
                     } else if (CVarGetInteger("gEnhancements.DisablePeachCutscene", 0) == 0) {
                         set_mario_action(gMarioState, ACT_INTRO_CUTSCENE, 0);
@@ -1298,6 +1312,13 @@ s32 lvl_set_current_level(UNUSED s16 arg0, s32 levelNum) {
     gCurrLevelNum = levelNum;
     gCurrCourseNum = gLevelToCourseNumTable[levelNum - 1];
 
+    // Photo mode picks the act itself and skips the act selector.
+    s32 photoModeAct = PhotoMode_OnSetCurrentLevel(levelNum);
+    if (photoModeAct > 0) {
+        gCurrActNum = photoModeAct;
+        gDialogCourseActNum = photoModeAct;
+    }
+
     if (gCurrDemoInput != NULL || gCurrCreditsEntry != NULL || gCurrCourseNum == COURSE_NONE) {
         return 0;
     }
@@ -1316,7 +1337,7 @@ s32 lvl_set_current_level(UNUSED s16 arg0, s32 levelNum) {
         disable_warp_checkpoint();
     }
 
-    if (gCurrCourseNum > COURSE_STAGES_MAX || warpCheckpointActive) {
+    if (gCurrCourseNum > COURSE_STAGES_MAX || warpCheckpointActive || photoModeAct > 0) {
         return 0;
     }
 
