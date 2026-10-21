@@ -11,20 +11,22 @@
 #include "port/events/Events.h"
 #include "port/ui/cvar_prefixes.h"
 
-extern "C" {
 #include "sm64.h"
 #include "game/area.h"
 #include "game/camera.h"
 #include "game/game_init.h"
 #include "game/ingame_menu.h"
 #include "game/level_update.h"
-#include "game/interaction.h"
-#include "game/mario.h"
 #include "game/object_list_processor.h"
 #include "game/save_file.h"
 #include "engine/math_util.h"
-#include "engine/surface_collision.h"
 #include "menu/title_screen.h"
+
+// These headers declare their functions without extern_s.
+extern "C" {
+#include "game/interaction.h"
+#include "game/mario.h"
+#include "engine/surface_collision.h"
 }
 
 #define PHOTO_CVAR(name) CVAR_ENHANCEMENT("PhotoMode." name)

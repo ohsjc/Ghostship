@@ -1,0 +1,88 @@
+name: Photo Mode Windows (fast)
+
+on:
+  push:
+    branches: [ photo-mode ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Runs in parallel with the Windows build; the exe needs a matching ghostship.o2r.
+  generate-port-o2r:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+          fetch-depth: 0
+      - name: Install dependencies
+        run: sudo apt-get install -y ninja-build
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@v1.2.13
+        with:
+          key: photo-o2r-ccache-${{ github.sha }}
+          restore-keys: photo-o2r-ccache-
+      - name: Generate ghostship.o2r
+        run: |
+          VERSION=$(grep -oP '^\s*project\s*\([^)]*VERSION\s+\K[0-9\.]+' CMakeLists.txt)
+          export PATH="/usr/lib/ccache:$PATH"
+          make -C Torch type=release -j4
+          Torch/cmake-build-release/torch pack port ghostship.o2r o2r -u $VERSION
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ghostship-o2r
+          path: ghostship.o2r
+          retention-days: 7
+
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0 # full history so the libultraship submodule gitlink resolves
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: libultraship/requirements.txt
+      - name: Install Python dependencies
+        run: pip install -r libultraship/requirements.txt
+      # Stable keys so every run after the first reuses vcpkg packages and compiled objects.
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v6
+        with:
+          key: photo-windows-vcpkg-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: photo-windows-vcpkg-
+          path: ~\AppData\Local\vcpkg\archives
+      - name: sccache
+        uses: hendrikmuhs/ccache-action@v1.2.14
+        with:
+          variant: sccache
+          key: photo-windows-sccache-${{ github.sha }}
+          restore-keys: photo-windows-sccache-
+      - name: Build
+        run: |
+          $env:VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT
+          cmake -S . -B "build/x64" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache -DPython3_EXECUTABLE="$(python -c 'import sys; print(sys.executable)')"
+          cmake --build ./build/x64 --target Ghostship
+      - name: Package
+        shell: pwsh
+        run: |
+          mkdir pkg
+          Move-Item build/x64/Ghostship.exe pkg/
+          Get-ChildItem build/x64 -Filter *.dll | Move-Item -Destination pkg/
+          if (Test-Path build/x64/.tcc) { Move-Item build/x64/.tcc pkg/.tcc }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ghostship-photo-mode-windows
+          path: pkg
+          include-hidden-files: true
+          compression-level: 1
+          retention-days: 7

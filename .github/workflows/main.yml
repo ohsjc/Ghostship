@@ -2,6 +2,7 @@ name: GenerateBuilds
 
 on:
   push:
+    branches-ignore: [ photo-mode ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
