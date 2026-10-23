@@ -194,6 +194,48 @@ static void DrawTrackFiles(WidgetInfo& info) {
     ImGui::TextDisabled("Folder: %s", PhotoModeTracks_GetDirectory().c_str());
 }
 
+static void DrawCameraModeControls(WidgetInfo& info) {
+    static const char* names[] = { "Free", "Orbit (O)", "Lock-on (U)" };
+    static std::string message;
+    PhotoModeCameraMode current = PhotoMode_GetCameraMode();
+    ImGui::BeginDisabled(!PhotoMode_IsActive());
+    for (int i = 0; i < 3; i++) {
+        if (i > 0) {
+            ImGui::SameLine();
+        }
+        bool isCurrent = (int)current == i;
+        if (isCurrent) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        }
+        if (ImGui::Button(names[i])) {
+            PhotoModeTracks_Stop();
+            message = PhotoMode_SetCameraMode((PhotoModeCameraMode)i) ? "" : "Nothing under the crosshair to lock on to.";
+        }
+        if (isCurrent) {
+            ImGui::PopStyleColor();
+        }
+    }
+    if (ImGui::Button("Pick Target Under Crosshair")) {
+        message = PhotoMode_PickTarget() ? "" : "Nothing under the crosshair.";
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Clear Target (Y)")) {
+        PhotoMode_ClearTarget();
+    }
+    ImGui::EndDisabled();
+
+    float tp[3];
+    const char* label = nullptr;
+    if (PhotoMode_GetTarget(tp, &label)) {
+        ImGui::Text("Target: %s at (%.0f, %.0f, %.0f)", label, tp[0], tp[1], tp[2]);
+    } else {
+        ImGui::TextDisabled("No target");
+    }
+    if (!message.empty()) {
+        ImGui::TextWrapped("%s", message.c_str());
+    }
+}
+
 static void DrawLevelPicker(WidgetInfo& info) {
     const auto& levels = PhotoMode_GetLevels();
     if (levels.empty()) {
@@ -298,6 +340,26 @@ void GhostshipMenu::AddMenuPhotoMode() {
         .Options(FloatSliderOptions().Min(0.01f).Max(1.0f).Step(0.01f).DefaultValue(0.15f).Format("%.2f"));
     AddWidget(path, "Invert Y", WIDGET_CVAR_CHECKBOX).CVar(PHOTO_CVAR("InvertY"));
 
+    AddWidget(path, "Camera Mode", WIDGET_SEPARATOR_TEXT);
+    AddWidget(path, "PhotoModeCameraMode", WIDGET_CUSTOM).CustomFunction(DrawCameraModeControls);
+    AddWidget(path, "Orbit Auto-Rotate", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(PHOTO_CVAR("Orbit.AutoSpeed"))
+        .Options(FloatSliderOptions()
+                     .Min(-90.0f)
+                     .Max(90.0f)
+                     .Step(1.0f)
+                     .DefaultValue(0.0f)
+                     .Format("%.0f deg/s")
+                     .Tooltip("Slowly circles the orbit target on its own. 0 = off."));
+    AddWidget(path, "Lock-on Follows Target", WIDGET_CVAR_CHECKBOX)
+        .CVar(PHOTO_CVAR("LockOn.Follow"))
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Carries the camera along as the target moves, like a tracking shot. Off: the camera stays put and "
+            "only turns to watch."));
+    AddWidget(path, "Lock-on Aim Smoothing", WIDGET_CVAR_SLIDER_FLOAT)
+        .CVar(PHOTO_CVAR("LockOn.AimSmoothing"))
+        .Options(FloatSliderOptions().Min(0.0f).Max(0.95f).Step(0.05f).DefaultValue(0.5f).Format("%.2f"));
+
     AddWidget(path, "Controls", WIDGET_SEPARATOR_TEXT);
     AddWidget(path,
               "Left stick: move\n"
@@ -307,7 +369,9 @@ void GhostshipMenu::AddMenuPhotoMode() {
               "D-pad up / down: zoom (FOV)\n"
               "D-pad left / right: roll\n"
               "L: reset FOV, roll and level the camera\n"
-              "Start: freeze / unfreeze time",
+              "Start: freeze / unfreeze time\n"
+              "Keyboard O: orbit, U: lock-on, Y: clear target\n"
+              "Orbit: look / left stick X circle, stick Y distance, A/B height",
               WIDGET_TEXT);
 
     AddSidebarEntry("Photo Mode", "Camera Tracks", 2);

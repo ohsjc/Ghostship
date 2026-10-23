@@ -197,6 +197,13 @@ bool IsPoolObject(const Object* obj) {
 
 } // namespace
 
+PhotoModeCategory PhotoModeFilters_GetCategory(const Object* obj) {
+    if (obj == nullptr || !IsPoolObject(obj) || obj->behavior == nullptr) {
+        return PhotoModeCategory::Other;
+    }
+    return CategoryOf(obj);
+}
+
 const std::vector<PhotoModeCategoryInfo>& PhotoModeFilters_GetCategories() {
     return sCategories;
 }

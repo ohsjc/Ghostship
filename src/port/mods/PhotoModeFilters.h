@@ -43,4 +43,5 @@ enum class PhotoModeFilterPreset {
 
 const std::vector<PhotoModeCategoryInfo>& PhotoModeFilters_GetCategories();
 bool PhotoModeFilters_IsHidden(const Object* obj);
+PhotoModeCategory PhotoModeFilters_GetCategory(const Object* obj);
 void PhotoModeFilters_ApplyPreset(PhotoModeFilterPreset preset);

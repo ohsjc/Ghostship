@@ -157,6 +157,7 @@ void PhotoModeTracks_JumpTo(int index) {
     }
     PhotoModeTracks_Stop();
     sSelected = index;
+    PhotoMode_SetCameraMode(PhotoModeCameraMode::Free);
     PhotoMode_SetPose(sKeys[index].pose);
 }
 
@@ -171,6 +172,7 @@ void PhotoModeTracks_Play() {
     sPlaying = true;
     sTime = 0.0f;
     sCountdown = std::max(CVarGetFloat(TRACK_CVAR("Countdown"), 3.0f), 0.0f);
+    PhotoMode_SetCameraMode(PhotoModeCameraMode::Free);
     PhotoMode_SetPose(sKeys[0].pose);
 }
 

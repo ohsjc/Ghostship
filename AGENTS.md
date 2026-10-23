@@ -74,6 +74,11 @@ For a quick compile check before committing, run `tools/wsl/syntax-check.sh`, wh
   - Polls the track hotkeys with ImGui (skipped when a text field has focus).
   - Draws the path preview projected onto the "Main Game" rect. The projection is roll-aware and matches `mtxf_rotate_xy`.
   - Draws the playback countdown.
+- Camera modes (`PhotoModeCameraMode` in `PhotoMode.h`): Free, Orbit and LockOn.
+  - The target is an `Object*` plus its behavior, checked every frame (a reused slot or despawn drops it). `PhotoMode_PickTarget()` picks the visible, unfiltered object closest to the crosshair (within 15°).
+  - Orbit: the camera sits at `center - forward * orbitDist`. Look controls and left stick X circle, stick Y sets distance, A/B change height. Without a target it orbits a fixed point 800 units ahead.
+  - LockOn: normal flying, but `AimAt()` overrides yaw/pitch. With `LockOn.Follow` the camera is carried by the target's movement.
+  - Playing a track or jumping to a keyframe switches back to Free.
 - The C++ pose API is `PhotoMode_GetPose()` / `PhotoMode_SetPose()`. Pose angles are in radians; roll is written to `gLakituState.roll` (s16).
 - `src/port/mods/BetterLevelSelect.{h,cpp}` exposes its level/act table through `BetterLevelSelect_GetEntries()`.
 
@@ -125,6 +130,9 @@ All CVars are `gEnhancements.PhotoMode.*`, via `CVAR_ENHANCEMENT("PhotoMode.X")`
 | `IgnoreDrawDistance` | 1 |
 | `HideHud` | 1 |
 | `Show.<Category>` | 1 (0 hides the category) |
+| `Orbit.AutoSpeed` | 0 (deg/s) |
+| `LockOn.Follow` | 1 |
+| `LockOn.AimSmoothing` | 0.5 |
 | `Tracks.Loop` | 0 |
 | `Tracks.Easing` | 1 (0 linear, 1 ease whole track, 2 ease each keyframe) |
 | `Tracks.Speed` | 1 |
@@ -144,7 +152,7 @@ The presets are Show Everything, Nature Documentary, Creatures Only and Empty La
 - Hold R: fast. Hold Z: slow.
 - D-pad up/down: FOV. D-pad left/right: roll.
 - L: reset FOV and roll, and level the camera.
-- Keyboard track hotkeys: K add keyframe, P play/stop, `[` / `]` previous/next keyframe, Delete delete keyframe. None of these keys are in the default N64 keyboard mapping.
+- Keyboard track hotkeys: K add keyframe, P play/stop, `[` / `]` previous/next keyframe, Delete delete keyframe, O orbit, U lock-on (press again to drop), Y clear target. None of these keys are in the default N64 keyboard mapping.
 - Start: freeze or unfreeze time.
 - F1 opens the menu. F2 toggles mouse capture.
 

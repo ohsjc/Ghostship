@@ -64,6 +64,14 @@ struct PhotoModeState {
     f32 yaw = 0;   // radians, SM64 convention (0 = +Z, increasing toward +X)
     f32 pitch = 0; // radians, positive looks up
     f32 roll = 0;  // radians, screen rotation
+
+    PhotoModeCameraMode camMode = PhotoModeCameraMode::Free;
+    struct Object* target = nullptr;
+    const BehaviorScript* targetBehavior = nullptr;
+    Vec3f lastTargetPos = { 0, 0, 0 };
+    Vec3f orbitCenter = { 0, 0, 0 }; // used when orbiting without a target
+    f32 orbitDist = 800.0f;
+    f32 orbitDistVel = 0;
     Vec3f vel = { 0, 0, 0 };
     f32 yawVel = 0;
     f32 pitchVel = 0;
@@ -181,6 +189,8 @@ void Activate(bool fromSpawn) {
     }
 
     sPhoto.roll = 0.0f;
+    sPhoto.camMode = PhotoModeCameraMode::Free;
+    sPhoto.target = nullptr;
     vec3f_set(sPhoto.vel, 0, 0, 0);
     sPhoto.yawVel = 0;
     sPhoto.pitchVel = 0;
@@ -196,6 +206,74 @@ void Activate(bool fromSpawn) {
 }
 
 void WriteCamera(struct Camera* c);
+
+bool TargetValid() {
+    struct Object* t = sPhoto.target;
+    return t != nullptr && (t->activeFlags & ACTIVE_FLAG_ACTIVE) && t->behavior == sPhoto.targetBehavior;
+}
+
+void TargetPoint(struct Object* obj, Vec3f out) {
+    out[0] = obj->oPosX;
+    out[1] = obj->oPosY + (obj->hitboxHeight > 0.0f ? obj->hitboxHeight * 0.5f : 50.0f);
+    out[2] = obj->oPosZ;
+}
+
+void OrbitCenter(Vec3f out) {
+    if (TargetValid()) {
+        TargetPoint(sPhoto.target, out);
+    } else {
+        vec3f_copy(out, sPhoto.orbitCenter);
+    }
+}
+
+void AimAt(const Vec3f point, f32 smoothing) {
+    f32 dx = point[0] - sPhoto.pos[0];
+    f32 dy = point[1] - sPhoto.pos[1];
+    f32 dz = point[2] - sPhoto.pos[2];
+    f32 yaw = atan2f(dx, dz);
+    f32 pitch = atan2f(dy, sqrtf(dx * dx + dz * dz));
+    f32 k = 1.0f - smoothing;
+    sPhoto.yaw += remainderf(yaw - sPhoto.yaw, 2.0f * kPi) * k;
+    sPhoto.pitch += (pitch - sPhoto.pitch) * k;
+    sPhoto.pitch = sPhoto.pitch > kMaxPitch ? kMaxPitch : (sPhoto.pitch < -kMaxPitch ? -kMaxPitch : sPhoto.pitch);
+    sPhoto.yawVel = 0.0f;
+    sPhoto.pitchVel = 0.0f;
+}
+
+// Orbit: the look controls (and left stick X) circle the camera around the center; left stick Y
+// changes the distance and A/B raise/lower the camera.
+void UpdateOrbit(const InputSnapshot& in, f32 smoothing) {
+    Vec3f center;
+    OrbitCenter(center);
+
+    f32 lookSpeed = DegToRad(CVarGetFloat(PHOTO_CVAR("LookSpeed"), 3.0f));
+    sPhoto.yaw -= (in.stickX / 64.0f) * lookSpeed;
+    sPhoto.yaw += DegToRad(CVarGetFloat(PHOTO_CVAR("Orbit.AutoSpeed"), 0.0f)) / 30.0f;
+    if (in.buttonDown & A_BUTTON) {
+        sPhoto.pitch -= lookSpeed * 0.5f;
+    }
+    if (in.buttonDown & B_BUTTON) {
+        sPhoto.pitch += lookSpeed * 0.5f;
+    }
+    sPhoto.pitch = sPhoto.pitch > kMaxPitch ? kMaxPitch : (sPhoto.pitch < -kMaxPitch ? -kMaxPitch : sPhoto.pitch);
+
+    f32 speed = CVarGetFloat(PHOTO_CVAR("MoveSpeed"), 40.0f);
+    if (in.buttonDown & R_TRIG) {
+        speed *= 4.0f;
+    }
+    if (in.buttonDown & Z_TRIG) {
+        speed *= 0.25f;
+    }
+    sPhoto.orbitDistVel = ApproachSmoothed(sPhoto.orbitDistVel, -(in.stickY / 64.0f) * speed, smoothing);
+    sPhoto.orbitDist += sPhoto.orbitDistVel;
+    sPhoto.orbitDist = sPhoto.orbitDist < 50.0f ? 50.0f : (sPhoto.orbitDist > 20000.0f ? 20000.0f : sPhoto.orbitDist);
+
+    f32 cosPitch = cosf(sPhoto.pitch);
+    sPhoto.pos[0] = center[0] - sinf(sPhoto.yaw) * cosPitch * sPhoto.orbitDist;
+    sPhoto.pos[1] = center[1] - sinf(sPhoto.pitch) * sPhoto.orbitDist;
+    sPhoto.pos[2] = center[2] - cosf(sPhoto.yaw) * cosPitch * sPhoto.orbitDist;
+    vec3f_set(sPhoto.vel, 0, 0, 0);
+}
 
 void UpdateFreeCamera(struct Camera* c) {
     const InputSnapshot& in = sPhoto.input;
@@ -218,6 +296,26 @@ void UpdateFreeCamera(struct Camera* c) {
 
     f32 smoothing = CVarGetFloat(PHOTO_CVAR("Smoothing"), 0.6f);
     smoothing = smoothing < 0.0f ? 0.0f : (smoothing > 0.95f ? 0.95f : smoothing);
+
+    bool hasTarget = TargetValid();
+    if (!hasTarget && sPhoto.target != nullptr) {
+        // The target despawned: keep orbiting where it was, or drop lock-on.
+        vec3f_copy(sPhoto.orbitCenter, sPhoto.lastTargetPos);
+        sPhoto.target = nullptr;
+        if (sPhoto.camMode == PhotoModeCameraMode::LockOn) {
+            sPhoto.camMode = PhotoModeCameraMode::Free;
+        }
+    }
+    if (hasTarget) {
+        Vec3f tp;
+        TargetPoint(sPhoto.target, tp);
+        if (sPhoto.camMode == PhotoModeCameraMode::LockOn && CVarGetInteger(PHOTO_CVAR("LockOn.Follow"), 1)) {
+            for (int i = 0; i < 3; i++) {
+                sPhoto.pos[i] += tp[i] - sPhoto.lastTargetPos[i];
+            }
+        }
+        vec3f_copy(sPhoto.lastTargetPos, tp);
+    }
 
     // Look: right stick, C-buttons and (when captured) mouse.
     f32 lookSpeed = DegToRad(CVarGetFloat(PHOTO_CVAR("LookSpeed"), 3.0f));
@@ -258,39 +356,50 @@ void UpdateFreeCamera(struct Camera* c) {
     sPhoto.pitch = sPhoto.pitch > kMaxPitch ? kMaxPitch : (sPhoto.pitch < -kMaxPitch ? -kMaxPitch : sPhoto.pitch);
     sPhoto.yaw = fmodf(sPhoto.yaw, 2.0f * kPi);
 
-    // Movement: left stick flies horizontally like a drone, A/B rise and descend.
-    f32 speed = CVarGetFloat(PHOTO_CVAR("MoveSpeed"), 40.0f);
-    if (in.buttonDown & R_TRIG) {
-        speed *= 4.0f;
-    }
-    if (in.buttonDown & Z_TRIG) {
-        speed *= 0.25f;
-    }
+    if (sPhoto.camMode == PhotoModeCameraMode::Orbit) {
+        UpdateOrbit(in, smoothing);
+    } else {
+        // Movement: left stick flies horizontally like a drone, A/B rise and descend.
+        f32 speed = CVarGetFloat(PHOTO_CVAR("MoveSpeed"), 40.0f);
+        if (in.buttonDown & R_TRIG) {
+            speed *= 4.0f;
+        }
+        if (in.buttonDown & Z_TRIG) {
+            speed *= 0.25f;
+        }
 
-    f32 fwdX = sinf(sPhoto.yaw);
-    f32 fwdZ = cosf(sPhoto.yaw);
-    // Right of the view direction (SM64 is right-handed with Y up).
-    f32 rightX = -fwdZ;
-    f32 rightZ = fwdX;
+        f32 fwdX = sinf(sPhoto.yaw);
+        f32 fwdZ = cosf(sPhoto.yaw);
+        // Right of the view direction (SM64 is right-handed with Y up).
+        f32 rightX = -fwdZ;
+        f32 rightZ = fwdX;
 
-    f32 moveF = in.stickY / 64.0f;
-    f32 moveR = in.stickX / 64.0f;
-    f32 moveU = 0.0f;
-    if (in.buttonDown & A_BUTTON) {
-        moveU += 1.0f;
-    }
-    if (in.buttonDown & B_BUTTON) {
-        moveU -= 1.0f;
-    }
+        f32 moveF = in.stickY / 64.0f;
+        f32 moveR = in.stickX / 64.0f;
+        f32 moveU = 0.0f;
+        if (in.buttonDown & A_BUTTON) {
+            moveU += 1.0f;
+        }
+        if (in.buttonDown & B_BUTTON) {
+            moveU -= 1.0f;
+        }
 
-    Vec3f target = {
-        (fwdX * moveF + rightX * moveR) * speed,
-        moveU * speed,
-        (fwdZ * moveF + rightZ * moveR) * speed,
-    };
-    for (int i = 0; i < 3; i++) {
-        sPhoto.vel[i] = ApproachSmoothed(sPhoto.vel[i], target[i], smoothing);
-        sPhoto.pos[i] += sPhoto.vel[i];
+        Vec3f target = {
+            (fwdX * moveF + rightX * moveR) * speed,
+            moveU * speed,
+            (fwdZ * moveF + rightZ * moveR) * speed,
+        };
+        for (int i = 0; i < 3; i++) {
+            sPhoto.vel[i] = ApproachSmoothed(sPhoto.vel[i], target[i], smoothing);
+            sPhoto.pos[i] += sPhoto.vel[i];
+        }
+
+    }
+    if (sPhoto.camMode == PhotoModeCameraMode::LockOn) {
+        Vec3f tp;
+        TargetPoint(sPhoto.target, tp);
+        f32 aim = CVarGetFloat(PHOTO_CVAR("LockOn.AimSmoothing"), 0.5f);
+        AimAt(tp, aim < 0.0f ? 0.0f : (aim > 0.95f ? 0.95f : aim));
     }
 
     // Keep the camera inside the range the engine can handle.
@@ -353,6 +462,8 @@ void WriteCamera(struct Camera* c) {
 }
 
 void Deactivate() {
+    sPhoto.camMode = PhotoModeCameraMode::Free;
+    sPhoto.target = nullptr;
     PhotoModeTracks_Stop();
     bool wasActive = sPhoto.state == State::Active;
     if (ControllingScene()) {
@@ -653,4 +764,104 @@ void PhotoMode_SetPose(const PhotoModePose& p) {
     sPhoto.pitchVel = 0.0f;
     f32 fov = p.fov < 5.0f ? 5.0f : (p.fov > 120.0f ? 120.0f : p.fov);
     CVarSetFloat(PHOTO_CVAR("Fov"), fov);
+}
+
+PhotoModeCameraMode PhotoMode_GetCameraMode() {
+    return sPhoto.camMode;
+}
+
+bool PhotoMode_PickTarget() {
+    f32 fwd[3] = { sinf(sPhoto.yaw) * cosf(sPhoto.pitch), sinf(sPhoto.pitch), cosf(sPhoto.yaw) * cosf(sPhoto.pitch) };
+    const f32 maxAngleCos = cosf(DegToRad(15.0f));
+    struct Object* best = nullptr;
+    f32 bestScore = 0.0f;
+    for (int i = 0; i < OBJECT_POOL_CAPACITY; i++) {
+        struct Object* obj = &gObjectPool[i];
+        if (!(obj->activeFlags & ACTIVE_FLAG_ACTIVE) || obj == gMarioObject || obj->header.gfx.sharedChild == nullptr ||
+            (obj->header.gfx.node.flags & GRAPH_RENDER_INVISIBLE) || PhotoModeFilters_IsHidden(obj)) {
+            continue;
+        }
+        Vec3f tp;
+        TargetPoint(obj, tp);
+        f32 d[3] = { tp[0] - sPhoto.pos[0], tp[1] - sPhoto.pos[1], tp[2] - sPhoto.pos[2] };
+        f32 dist = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+        if (dist < 1.0f || dist > 10000.0f) {
+            continue;
+        }
+        f32 cosAngle = (d[0] * fwd[0] + d[1] * fwd[1] + d[2] * fwd[2]) / dist;
+        if (cosAngle < maxAngleCos) {
+            continue;
+        }
+        // Prefer objects closest to the crosshair, then nearer ones.
+        f32 score = cosAngle - dist * 0.000002f;
+        if (best == nullptr || score > bestScore) {
+            best = obj;
+            bestScore = score;
+        }
+    }
+    if (best == nullptr) {
+        return false;
+    }
+    sPhoto.target = best;
+    sPhoto.targetBehavior = best->behavior;
+    TargetPoint(best, sPhoto.lastTargetPos);
+    return true;
+}
+
+void PhotoMode_ClearTarget() {
+    if (TargetValid()) {
+        TargetPoint(sPhoto.target, sPhoto.orbitCenter);
+    }
+    sPhoto.target = nullptr;
+    if (sPhoto.camMode == PhotoModeCameraMode::LockOn) {
+        sPhoto.camMode = PhotoModeCameraMode::Free;
+    }
+}
+
+bool PhotoMode_GetTarget(f32 out[3], const char** label) {
+    if (!TargetValid()) {
+        return false;
+    }
+    TargetPoint(sPhoto.target, out);
+    if (label != nullptr) {
+        PhotoModeCategory cat = PhotoModeFilters_GetCategory(sPhoto.target);
+        *label = PhotoModeFilters_GetCategories()[(size_t)cat].label;
+    }
+    return true;
+}
+
+bool PhotoMode_GetOrbitCenter(f32 out[3]) {
+    if (sPhoto.camMode != PhotoModeCameraMode::Orbit) {
+        return false;
+    }
+    OrbitCenter(out);
+    return true;
+}
+
+bool PhotoMode_SetCameraMode(PhotoModeCameraMode mode) {
+    if (!PhotoMode_IsActive()) {
+        return false;
+    }
+    if (mode == PhotoModeCameraMode::LockOn) {
+        if (!TargetValid() && !PhotoMode_PickTarget()) {
+            return false;
+        }
+    } else if (mode == PhotoModeCameraMode::Orbit) {
+        if (!TargetValid() && !PhotoMode_PickTarget()) {
+            // Nothing under the crosshair: orbit a point in front of the camera.
+            f32 cosPitch = cosf(sPhoto.pitch);
+            sPhoto.orbitCenter[0] = sPhoto.pos[0] + sinf(sPhoto.yaw) * cosPitch * 800.0f;
+            sPhoto.orbitCenter[1] = sPhoto.pos[1] + sinf(sPhoto.pitch) * 800.0f;
+            sPhoto.orbitCenter[2] = sPhoto.pos[2] + cosf(sPhoto.yaw) * cosPitch * 800.0f;
+        }
+        Vec3f center;
+        OrbitCenter(center);
+        f32 dx = center[0] - sPhoto.pos[0], dy = center[1] - sPhoto.pos[1], dz = center[2] - sPhoto.pos[2];
+        f32 dist = sqrtf(dx * dx + dy * dy + dz * dz);
+        sPhoto.orbitDist = dist < 100.0f ? 100.0f : dist;
+        sPhoto.orbitDistVel = 0.0f;
+        AimAt(center, 0.0f);
+    }
+    sPhoto.camMode = mode;
+    return true;
 }

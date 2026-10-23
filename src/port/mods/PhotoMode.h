@@ -50,6 +50,22 @@ struct PhotoModePose {
     f32 fov;
 };
 PhotoModePose PhotoMode_GetPose();
+
+enum class PhotoModeCameraMode {
+    Free,
+    // Circles the target (or a fixed point) while always looking at it.
+    Orbit,
+    // Flies freely but always aims at the target, optionally carried along with it.
+    LockOn,
+};
+PhotoModeCameraMode PhotoMode_GetCameraMode();
+// Returns false if the mode needs a target and none is under the crosshair.
+bool PhotoMode_SetCameraMode(PhotoModeCameraMode mode);
+// Picks the visible object nearest the center of the view. Returns false if none.
+bool PhotoMode_PickTarget();
+void PhotoMode_ClearTarget();
+bool PhotoMode_GetTarget(f32 out[3], const char** label);
+bool PhotoMode_GetOrbitCenter(f32 out[3]);
 // Moves the free camera to the pose and stops any momentum.
 void PhotoMode_SetPose(const PhotoModePose& pose);
 #endif

@@ -94,6 +94,24 @@ void HandleHotkeys() {
     if (ImGui::IsKeyPressed(ImGuiKey_Delete, false)) {
         PhotoModeTracks_DeleteKeyframe(PhotoModeTracks_GetSelected());
     }
+    if (ImGui::IsKeyPressed(ImGuiKey_O, false)) {
+        PhotoModeTracks_Stop();
+        bool on = PhotoMode_GetCameraMode() == PhotoModeCameraMode::Orbit;
+        PhotoMode_SetCameraMode(on ? PhotoModeCameraMode::Free : PhotoModeCameraMode::Orbit);
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_U, false)) {
+        PhotoModeTracks_Stop();
+        if (PhotoMode_GetCameraMode() == PhotoModeCameraMode::LockOn) {
+            PhotoMode_SetCameraMode(PhotoModeCameraMode::Free);
+        } else {
+            // Pressing U again while aiming at something else switches targets.
+            PhotoMode_PickTarget();
+            PhotoMode_SetCameraMode(PhotoModeCameraMode::LockOn);
+        }
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
+        PhotoMode_ClearTarget();
+    }
 }
 
 void DrawPath(ImDrawList* draw, const Projector& proj) {
@@ -163,6 +181,33 @@ void PhotoModeOverlay::Draw() {
         DrawPath(draw, Projector(PhotoMode_GetPose(), rectMin, rectSize));
     }
 
+    if (!playing && CVarGetInteger(TRACK_CVAR("ShowHud"), 1)) {
+        Projector proj(PhotoMode_GetPose(), rectMin, rectSize);
+        float tp[3];
+        const char* label = nullptr;
+        ImVec2 p;
+        if (PhotoMode_GetTarget(tp, &label) && proj.Project(tp, &p)) {
+            const ImU32 col = IM_COL32(120, 255, 120, 230);
+            float h = 14.0f, l = 6.0f;
+            // Corner brackets around the target.
+            for (int sx = -1; sx <= 1; sx += 2) {
+                for (int sy = -1; sy <= 1; sy += 2) {
+                    ImVec2 c(p.x + sx * h, p.y + sy * h);
+                    draw->AddLine(c, ImVec2(c.x - sx * l, c.y), col, 2.0f);
+                    draw->AddLine(c, ImVec2(c.x, c.y - sy * l), col, 2.0f);
+                }
+            }
+            draw->AddText(ImVec2(p.x + h + 4.0f, p.y - h), col, label);
+        } else if (PhotoMode_GetOrbitCenter(tp) && proj.Project(tp, &p)) {
+            draw->AddCircle(p, 8.0f, IM_COL32(120, 255, 120, 200), 0, 2.0f);
+        }
+        // Small crosshair so you can see what O / U will pick.
+        ImVec2 c(rectMin.x + rectSize.x * 0.5f, rectMin.y + rectSize.y * 0.5f);
+        const ImU32 xc = IM_COL32(255, 255, 255, 120);
+        draw->AddLine(ImVec2(c.x - 6, c.y), ImVec2(c.x + 6, c.y), xc, 1.0f);
+        draw->AddLine(ImVec2(c.x, c.y - 6), ImVec2(c.x, c.y + 6), xc, 1.0f);
+    }
+
     if (countdown > 0.0f) {
         std::string text = std::to_string((int)ceilf(countdown));
         float fontSize = ImGui::GetFontSize() * 6.0f;
@@ -176,7 +221,9 @@ void PhotoModeOverlay::Draw() {
         if (PhotoModeTracks_GetSelected() >= 0) {
             text += " (selected " + std::to_string(PhotoModeTracks_GetSelected() + 1) + ")";
         }
-        text += "   K add  P play  [ ] select  Del delete";
+        static const char* modeNames[] = { "Free", "Orbit", "Lock-on" };
+        text = std::string("Camera: ") + modeNames[(int)PhotoMode_GetCameraMode()] + "   " + text;
+        text += "   K add  P play  [ ] select  Del delete  O orbit  U lock-on  Y clear target";
         ImVec2 at(rectMin.x + 10.0f, rectMin.y + rectSize.y - ImGui::GetFontSize() - 10.0f);
         draw->AddText(ImVec2(at.x + 1, at.y + 1), IM_COL32(0, 0, 0, 200), text.c_str());
         draw->AddText(at, IM_COL32(255, 255, 255, 220), text.c_str());
