@@ -1,6 +1,7 @@
 #include "PhotoModeFilters.h"
 
 #include <initializer_list>
+#include <string>
 #include <unordered_map>
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <ship/window/gui/Gui.h>
@@ -214,6 +215,28 @@ bool PhotoModeFilters_IsHidden(const Object* obj) {
     }
     Cat cat = CategoryOf(obj);
     return CVarGetInteger(sCategories[(size_t)cat].cvarName, 1) == 0;
+}
+
+const std::string& PhotoModeFilters_GetScaleCVar(PhotoModeCategory cat) {
+    static std::vector<std::string> sNames;
+    if (sNames.empty()) {
+        for (const auto& info : sCategories) {
+            std::string name = info.cvarName;
+            size_t at = name.find(".Show.");
+            if (at != std::string::npos) {
+                name.replace(at, 6, ".Scale.");
+            }
+            sNames.push_back(name);
+        }
+    }
+    return sNames[(size_t)cat];
+}
+
+float PhotoModeFilters_GetScale(const Object* obj) {
+    if (obj == nullptr || !IsPoolObject(obj) || obj->behavior == nullptr) {
+        return 1.0f;
+    }
+    return CVarGetFloat(PhotoModeFilters_GetScaleCVar(CategoryOf(obj)).c_str(), 1.0f);
 }
 
 void PhotoModeFilters_ApplyPreset(PhotoModeFilterPreset preset) {

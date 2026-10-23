@@ -22,6 +22,13 @@ extern_s bool PhotoMode_GetRoomProbePos(f32* x, f32* y, f32* z);
 extern_s bool PhotoMode_GetFov(f32* fov);
 // True if the object's visibility category is hidden by the photo mode filters.
 extern_s bool PhotoMode_ShouldHideObject(struct Object* obj);
+// Replaces the background (skybox) display list. Returns true if *gfx should be used instead of the
+// level's own background.
+extern_s bool PhotoMode_RenderSkybox(void** gfx);
+// Multiplies the perspective projection by the photo mode stretch (call after loading it).
+extern_s void PhotoMode_ApplyProjectionStretch(void);
+// Scales an object's draw scale in place (per-category scale). Returns true if it changed.
+extern_s bool PhotoMode_ScaleObject(struct Object* obj, f32 scale[3]);
 
 #ifdef __cplusplus
 #include <vector>
@@ -68,4 +75,8 @@ bool PhotoMode_GetTarget(f32 out[3], const char** label);
 bool PhotoMode_GetOrbitCenter(f32 out[3]);
 // Moves the free camera to the pose and stops any momentum.
 void PhotoMode_SetPose(const PhotoModePose& pose);
+// Dolly zoom ("vertigo"): locks the focus point (target, or Dolly.Distance ahead) and adjusts
+// the FOV as the camera moves so the focus keeps its size on screen.
+bool PhotoMode_IsDollyZoom();
+void PhotoMode_SetDollyZoom(bool enabled);
 #endif

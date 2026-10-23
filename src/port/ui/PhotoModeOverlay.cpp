@@ -11,6 +11,7 @@
 
 #include "port/mods/PhotoMode.h"
 #include "port/mods/PhotoModeTracks.h"
+#include "port/mods/PhotoModeVisuals.h"
 #include "port/ui/cvar_prefixes.h"
 
 #define TRACK_CVAR(name) CVAR_ENHANCEMENT("PhotoMode.Tracks." name)
@@ -61,8 +62,10 @@ struct Projector {
         float y = d[0] * up[0] + d[1] * up[1] + d[2] * up[2];
         float rx = x * cosRoll - y * sinRoll;
         float ry = x * sinRoll + y * cosRoll;
-        float ndcX = rx / (z * tanHalfFov * aspect);
-        float ndcY = ry / (z * tanHalfFov);
+        float sx, sy;
+        PhotoModeVisuals_GetStretch(&sx, &sy);
+        float ndcX = rx * sx / (z * tanHalfFov * aspect);
+        float ndcY = ry * sy / (z * tanHalfFov);
         if (fabsf(ndcX) > 4.0f || fabsf(ndcY) > 4.0f) {
             return false;
         }
@@ -111,6 +114,9 @@ void HandleHotkeys() {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_Y, false)) {
         PhotoMode_ClearTarget();
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_J, false)) {
+        PhotoMode_SetDollyZoom(!PhotoMode_IsDollyZoom());
     }
 }
 
@@ -222,8 +228,9 @@ void PhotoModeOverlay::Draw() {
             text += " (selected " + std::to_string(PhotoModeTracks_GetSelected() + 1) + ")";
         }
         static const char* modeNames[] = { "Free", "Orbit", "Lock-on" };
-        text = std::string("Camera: ") + modeNames[(int)PhotoMode_GetCameraMode()] + "   " + text;
-        text += "   K add  P play  [ ] select  Del delete  O orbit  U lock-on  Y clear target";
+        text = std::string("Camera: ") + modeNames[(int)PhotoMode_GetCameraMode()] +
+               (PhotoMode_IsDollyZoom() ? " + dolly zoom" : "") + "   " + text;
+        text += "   K add  P play  [ ] select  Del delete  O orbit  U lock-on  Y clear target  J dolly zoom";
         ImVec2 at(rectMin.x + 10.0f, rectMin.y + rectSize.y - ImGui::GetFontSize() - 10.0f);
         draw->AddText(ImVec2(at.x + 1, at.y + 1), IM_COL32(0, 0, 0, 200), text.c_str());
         draw->AddText(at, IM_COL32(255, 255, 255, 220), text.c_str());

@@ -80,6 +80,12 @@ For a quick compile check before committing, run `tools/wsl/syntax-check.sh`, wh
   - LockOn: normal flying, but `AimAt()` overrides yaw/pitch. With `LockOn.Follow` the camera is carried by the target's movement.
   - Playing a track or jumping to a keyframe switches back to Free.
 - The C++ pose API is `PhotoMode_GetPose()` / `PhotoMode_SetPose()`. Pose angles are in radians; roll is written to `gLakituState.roll` (s16).
+- `src/port/mods/PhotoModeVisuals.{h,cpp}` holds the visual effects. The menu page is "Photo Mode → Visual FX".
+  - Skybox override (`PhotoMode_RenderSkybox`, hooked in `geo_process_background`): built-in sky (`create_skybox_facing_camera`), solid, gradient or custom image. The custom sky is a sphere centered on the camera, drawn with its own perspective, stretch, roll and rotation-only view matrices (the background is drawn before the level's camera nodes).
+  - Custom images are loaded from `<game folder>/photomode_skyboxes/` (created with a README) using `Torch/lib/n64graphics/stb_image.h`. They are cut into 256×256 RGBA32 tiles with a 1 px border (`LoadTile`, since `LoadBlock` is limited to 4096 texels). The texture cache is keyed by address, so it is invalidated with `__gSPInvalidateTexCache` after a reload. Geometry display lists are static and rebuilt only when the shaping settings change.
+  - Projection stretch (`PhotoMode_ApplyProjectionStretch`, after the projection load in `geo_process_perspective`). The overlay `Projector` applies the same stretch.
+  - Object scale (`PhotoMode_ScaleObject`, in `geo_process_object`): draw scale only, global × XYZ × per-category (`PhotoModeFilters_GetScale`).
+- Dolly zoom (`PhotoMode_SetDollyZoom`, in `PhotoMode.cpp`): locks a focus (target or `Dolly.Distance` ahead) and sets `fov = 2·atan(tan(fov0/2)·d0/d)` each frame. The FOV range is 1–170.
 - `src/port/mods/BetterLevelSelect.{h,cpp}` exposes its level/act table through `BetterLevelSelect_GetEntries()`.
 
 New `.cpp` files under `src/port/` are picked up automatically by CMake's GLOB_RECURSE.
@@ -104,7 +110,7 @@ New `.cpp` files under `src/port/` are picked up automatically by CMake's GLOB_R
 | `src/game/object_helpers.c` | `geo_switch_area`: room visibility is probed from the camera position. |
 | `src/game/hud.c` | `render_hud`: hidden when `PhotoMode.HideHud` is on. |
 | `src/engine/surface_load.c` | Object collision distance is measured from the camera instead of Mario. Never load all collision: the surface pools are fixed and unchecked, so overflow corrupts memory. |
-| `src/game/rendering_graph_node.c` | `geo_process_object`: skips only the draw block when `PhotoMode_ShouldHideObject()` is true. The matrices and `cameraToObject` are still computed, so held objects and sound keep working. Filters apply only while `CameraOwned()`. |
+| `src/game/rendering_graph_node.c` | `geo_process_background`: `PhotoMode_RenderSkybox()`. `geo_process_perspective`: `PhotoMode_ApplyProjectionStretch()`. `geo_process_object`: `PhotoMode_ScaleObject()`, and skips only the draw block when `PhotoMode_ShouldHideObject()` is true. The matrices and `cameraToObject` are still computed, so held objects and sound keep working. Filters apply only while `CameraOwned()`. |
 
 The free camera itself is a `CameraUpdate` listener at HIGH priority. It writes `Camera` and `gLakituState`.
 
@@ -140,6 +146,17 @@ All CVars are `gEnhancements.PhotoMode.*`, via `CVAR_ENHANCEMENT("PhotoMode.X")`
 | `Tracks.DefaultDuration` | 3 (seconds) |
 | `Tracks.ShowPath` | 1 |
 | `Tracks.ShowHud` | 1 |
+| `Sky.Mode` | 0 (0 level default, 1 built-in, 2 solid, 3 gradient, 4 custom image) |
+| `Sky.BuiltIn` | 0 (0–9: Ocean, Flaming, Underwater City, Below Clouds, Snow Mountains, Desert, Haunted, Green, Above Clouds, Purple) |
+| `Sky.Color`, `Sky.TopColor`, `Sky.BottomColor`, `Sky.Tint`, `Sky.FillColor` | packed 0xRRGGBB |
+| `Sky.Image` | "" (file name in `photomode_skyboxes/`) |
+| `Sky.Rotation` / `Sky.Spin` | 0 deg / 0 deg/s |
+| `Sky.FillSphere` / `Sky.Repeats` | 1 / 1 |
+| `Sky.Horizon` / `Sky.VScale` | 0 deg / 1 (only when not filling) |
+| `Sky.Mirror` / `Sky.Brightness` | 0 / 1 |
+| `Stretch.X` / `Stretch.Y` | 1 |
+| `Dolly.Distance` | 1000 |
+| `Scale.All`, `Scale.X/Y/Z`, `Scale.<Category>` | 1 |
 
 The `<Category>` names are `Enemies`, `Bosses`, `Wildlife`, `Characters`, `Coins`, `StarsKeys`, `PowerUps`, `Boxes`, `Switches`, `Signs`, `Doors`, `Scenery`, `Platforms`, `Hazards`, `NaturalEffects`, `GameEffects` and `Other`.
 
@@ -150,9 +167,9 @@ The presets are Show Everything, Nature Documentary, Creatures Only and Empty La
 - Right stick, C-buttons or mouse: look.
 - A / B: up / down.
 - Hold R: fast. Hold Z: slow.
-- D-pad up/down: FOV. D-pad left/right: roll.
+- D-pad up/down: FOV (1–170, finer below 20). D-pad left/right: roll.
 - L: reset FOV and roll, and level the camera.
-- Keyboard track hotkeys: K add keyframe, P play/stop, `[` / `]` previous/next keyframe, Delete delete keyframe, O orbit, U lock-on (press again to drop), Y clear target. None of these keys are in the default N64 keyboard mapping.
+- Keyboard track hotkeys: K add keyframe, P play/stop, `[` / `]` previous/next keyframe, Delete delete keyframe, O orbit, U lock-on (press again to drop), Y clear target, J dolly zoom. None of these keys are in the default N64 keyboard mapping.
 - Start: freeze or unfreeze time.
 - F1 opens the menu. F2 toggles mouse capture.
 

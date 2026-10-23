@@ -72,6 +72,12 @@ struct PhotoModeState {
     Vec3f orbitCenter = { 0, 0, 0 }; // used when orbiting without a target
     f32 orbitDist = 800.0f;
     f32 orbitDistVel = 0;
+
+    // Dolly zoom: FOV follows the distance to a focus point so its apparent size stays fixed.
+    bool dolly = false;
+    Vec3f dollyFocus = { 0, 0, 0 };
+    f32 dollyDist0 = 1000.0f;
+    f32 dollyTan0 = 0.0f; // tan(fov0 / 2)
     Vec3f vel = { 0, 0, 0 };
     f32 yawVel = 0;
     f32 pitchVel = 0;
@@ -92,6 +98,8 @@ PhotoModeState sPhoto;
 std::vector<PhotoModeLevel> sLevels;
 
 constexpr f32 kPi = 3.14159265358979323846f;
+constexpr f32 kMinFov = 1.0f;
+constexpr f32 kMaxFov = 170.0f;
 constexpr f32 kMaxPitch = 89.0f * kPi / 180.0f;
 constexpr f32 kEyeHeight = 160.0f;
 // Far above the middle of the level: out of range of every object, but objects that turn
@@ -419,18 +427,33 @@ void UpdateFreeCamera(struct Camera* c) {
 
     // FOV on the D-pad, L resets FOV and levels the camera.
     f32 fov = CVarGetFloat(PHOTO_CVAR("Fov"), 45.0f);
-    if (in.buttonDown & U_JPAD) {
-        fov -= 1.0f;
-    }
-    if (in.buttonDown & D_JPAD) {
-        fov += 1.0f;
+    if (sPhoto.dolly) {
+        if (TargetValid()) {
+            TargetPoint(sPhoto.target, sPhoto.dollyFocus);
+        }
+        f32 d[3] = { sPhoto.dollyFocus[0] - sPhoto.pos[0], sPhoto.dollyFocus[1] - sPhoto.pos[1],
+                     sPhoto.dollyFocus[2] - sPhoto.pos[2] };
+        f32 dist = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+        if (dist < 1.0f) {
+            dist = 1.0f;
+        }
+        fov = 2.0f * atanf(sPhoto.dollyTan0 * sPhoto.dollyDist0 / dist) * 180.0f / kPi;
+    } else {
+        f32 fovStep = fov > 20.0f ? 1.0f : 0.25f;
+        if (in.buttonDown & U_JPAD) {
+            fov -= fovStep;
+        }
+        if (in.buttonDown & D_JPAD) {
+            fov += fovStep;
+        }
     }
     if (in.buttonPressed & L_TRIG) {
+        sPhoto.dolly = false;
         fov = 45.0f;
         sPhoto.pitch = 0.0f;
         sPhoto.roll = 0.0f;
     }
-    fov = fov < 5.0f ? 5.0f : (fov > 120.0f ? 120.0f : fov);
+    fov = fov < kMinFov ? kMinFov : (fov > kMaxFov ? kMaxFov : fov);
     CVarSetFloat(PHOTO_CVAR("Fov"), fov);
 
     WriteCamera(c);
@@ -462,6 +485,7 @@ void WriteCamera(struct Camera* c) {
 }
 
 void Deactivate() {
+    sPhoto.dolly = false;
     sPhoto.camMode = PhotoModeCameraMode::Free;
     sPhoto.target = nullptr;
     PhotoModeTracks_Stop();
@@ -762,7 +786,7 @@ void PhotoMode_SetPose(const PhotoModePose& p) {
     sPhoto.roll = p.roll;
     sPhoto.yawVel = 0.0f;
     sPhoto.pitchVel = 0.0f;
-    f32 fov = p.fov < 5.0f ? 5.0f : (p.fov > 120.0f ? 120.0f : p.fov);
+    f32 fov = p.fov < kMinFov ? kMinFov : (p.fov > kMaxFov ? kMaxFov : p.fov);
     CVarSetFloat(PHOTO_CVAR("Fov"), fov);
 }
 
@@ -864,4 +888,30 @@ bool PhotoMode_SetCameraMode(PhotoModeCameraMode mode) {
     }
     sPhoto.camMode = mode;
     return true;
+}
+
+bool PhotoMode_IsDollyZoom() {
+    return sPhoto.dolly;
+}
+
+void PhotoMode_SetDollyZoom(bool enabled) {
+    sPhoto.dolly = false;
+    if (!enabled || sPhoto.state != State::Active) {
+        return;
+    }
+    if (TargetValid()) {
+        TargetPoint(sPhoto.target, sPhoto.dollyFocus);
+    } else {
+        f32 dist = CVarGetFloat(PHOTO_CVAR("Dolly.Distance"), 1000.0f);
+        f32 cosPitch = cosf(sPhoto.pitch);
+        sPhoto.dollyFocus[0] = sPhoto.pos[0] + sinf(sPhoto.yaw) * cosPitch * dist;
+        sPhoto.dollyFocus[1] = sPhoto.pos[1] + sinf(sPhoto.pitch) * dist;
+        sPhoto.dollyFocus[2] = sPhoto.pos[2] + cosf(sPhoto.yaw) * cosPitch * dist;
+    }
+    f32 d[3] = { sPhoto.dollyFocus[0] - sPhoto.pos[0], sPhoto.dollyFocus[1] - sPhoto.pos[1],
+                 sPhoto.dollyFocus[2] - sPhoto.pos[2] };
+    f32 dist = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    sPhoto.dollyDist0 = dist < 1.0f ? 1.0f : dist;
+    sPhoto.dollyTan0 = tanf(CVarGetFloat(PHOTO_CVAR("Fov"), 45.0f) * kPi / 360.0f);
+    sPhoto.dolly = true;
 }

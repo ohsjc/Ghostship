@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 struct Object;
@@ -44,4 +45,7 @@ enum class PhotoModeFilterPreset {
 const std::vector<PhotoModeCategoryInfo>& PhotoModeFilters_GetCategories();
 bool PhotoModeFilters_IsHidden(const Object* obj);
 PhotoModeCategory PhotoModeFilters_GetCategory(const Object* obj);
+// Per-category draw scale multiplier (CVar PhotoMode.Scale.<Category>, default 1).
+const std::string& PhotoModeFilters_GetScaleCVar(PhotoModeCategory cat);
+float PhotoModeFilters_GetScale(const Object* obj);
 void PhotoModeFilters_ApplyPreset(PhotoModeFilterPreset preset);

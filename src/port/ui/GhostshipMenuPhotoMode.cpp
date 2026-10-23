@@ -3,8 +3,10 @@
 #include "port/mods/PhotoMode.h"
 #include "port/mods/PhotoModeFilters.h"
 #include "port/mods/PhotoModeTracks.h"
+#include "port/mods/PhotoModeVisuals.h"
 
 #include <imgui.h>
+#include <libultraship/bridge/consolevariablebridge.h>
 
 namespace GhostshipGui {
 
@@ -124,7 +126,7 @@ static void DrawKeyframeList(WidgetInfo& info) {
                 k.pose.roll = angles[2] * kDegToRad;
             }
             ImGui::TextUnformatted("FOV");
-            ImGui::SliderFloat("##fov", &k.pose.fov, 5.0f, 120.0f, "%.0f");
+            ImGui::SliderFloat("##fov", &k.pose.fov, 1.0f, 170.0f, "%.0f");
             if (i + 1 < (int)keys.size()) {
                 ImGui::TextUnformatted("Seconds to next keyframe");
                 ImGui::DragFloat("##dur", &k.duration, 0.05f, 0.05f, 120.0f, "%.2f s");
@@ -236,6 +238,184 @@ static void DrawCameraModeControls(WidgetInfo& info) {
     }
 }
 
+static bool ColorCVar(const char* label, const char* cvar, int def) {
+    int packed = CVarGetInteger(cvar, def);
+    float col[3] = { ((packed >> 16) & 0xFF) / 255.0f, ((packed >> 8) & 0xFF) / 255.0f, (packed & 0xFF) / 255.0f };
+    if (!ImGui::ColorEdit3(label, col)) {
+        return false;
+    }
+    int r = (int)(col[0] * 255.0f + 0.5f), g = (int)(col[1] * 255.0f + 0.5f), b = (int)(col[2] * 255.0f + 0.5f);
+    CVarSetInteger(cvar, (r << 16) | (g << 8) | b);
+    return true;
+}
+
+static void FloatCVar(const char* label, const char* cvar, float def, float min, float max, const char* fmt,
+                      ImGuiSliderFlags flags = 0) {
+    float v = CVarGetFloat(cvar, def);
+    if (ImGui::SliderFloat(label, &v, min, max, fmt, flags)) {
+        CVarSetFloat(cvar, v);
+    }
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        CVarSetFloat(cvar, def);
+    }
+}
+
+static void DrawSkyboxControls(WidgetInfo& info) {
+    static const char* modes[] = { "Level default", "Built-in skybox", "Solid color", "Gradient", "Custom image" };
+    static const char* builtins[] = { "Ocean (Bob-omb Battlefield)", "Flaming (Bowser)", "Underwater City",
+                                      "Below Clouds", "Snow Mountains", "Desert", "Haunted", "Green",
+                                      "Above Clouds", "Purple" };
+    static std::vector<std::string> images;
+    static bool listed = false;
+    if (!listed) {
+        images = PhotoModeVisuals_ListSkyboxImages();
+        listed = true;
+    }
+
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+    int mode = CVarGetInteger(PHOTO_CVAR("Sky.Mode"), 0);
+    if (ImGui::Combo("Sky", &mode, modes, IM_ARRAYSIZE(modes))) {
+        CVarSetInteger(PHOTO_CVAR("Sky.Mode"), mode);
+    }
+    switch ((PhotoModeSkyMode)mode) {
+        case PhotoModeSkyMode::BuiltIn: {
+            int idx = CVarGetInteger(PHOTO_CVAR("Sky.BuiltIn"), 0);
+            if (ImGui::Combo("Skybox", &idx, builtins, IM_ARRAYSIZE(builtins))) {
+                CVarSetInteger(PHOTO_CVAR("Sky.BuiltIn"), idx);
+            }
+            break;
+        }
+        case PhotoModeSkyMode::Solid:
+            ColorCVar("Color", PHOTO_CVAR("Sky.Color"), 0x87CEEB);
+            break;
+        case PhotoModeSkyMode::Gradient:
+            ColorCVar("Top", PHOTO_CVAR("Sky.TopColor"), 0x1E3C78);
+            ColorCVar("Bottom", PHOTO_CVAR("Sky.BottomColor"), 0xF0A060);
+            break;
+        case PhotoModeSkyMode::CustomImage: {
+            std::string current = CVarGetString(PHOTO_CVAR("Sky.Image"), "");
+            if (ImGui::BeginCombo("Image", current.empty() ? "(none)" : current.c_str())) {
+                for (const auto& name : images) {
+                    if (ImGui::Selectable(name.c_str(), name == current)) {
+                        CVarSetString(PHOTO_CVAR("Sky.Image"), name.c_str());
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (ImGui::Button("Refresh List")) {
+                images = PhotoModeVisuals_ListSkyboxImages();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Reload Image")) {
+                PhotoModeVisuals_ReloadSkyboxImage();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Copy Folder Path")) {
+                ImGui::SetClipboardText(PhotoModeVisuals_GetSkyboxDirectory().c_str());
+            }
+            ImGui::TextWrapped("Folder: %s", PhotoModeVisuals_GetSkyboxDirectory().c_str());
+            if (images.empty()) {
+                ImGui::TextWrapped("No images yet: drop .png/.jpg/.bmp/.tga files in the folder and press Refresh.");
+            }
+            if (!PhotoModeVisuals_GetSkyboxStatus().empty()) {
+                ImGui::TextDisabled("%s", PhotoModeVisuals_GetSkyboxStatus().c_str());
+            }
+
+            ImGui::SeparatorText("Adjust Image");
+            FloatCVar("Rotation", PHOTO_CVAR("Sky.Rotation"), 0.0f, -180.0f, 180.0f, "%.0f deg");
+            FloatCVar("Spin", PHOTO_CVAR("Sky.Spin"), 0.0f, -90.0f, 90.0f, "%.1f deg/s");
+            bool fill = CVarGetInteger(PHOTO_CVAR("Sky.FillSphere"), 1) != 0;
+            if (ImGui::Checkbox("Fill Whole Sky", &fill)) {
+                CVarSetInteger(PHOTO_CVAR("Sky.FillSphere"), fill);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("On: the image covers the sky top to bottom (best for 2:1 panoramas).\n"
+                                  "Off: the image keeps its proportions as a band around the horizon.");
+            }
+            int repeats = CVarGetInteger(PHOTO_CVAR("Sky.Repeats"), 1);
+            if (ImGui::SliderInt("Repeats Around", &repeats, 1, 16)) {
+                CVarSetInteger(PHOTO_CVAR("Sky.Repeats"), repeats);
+            }
+            ImGui::BeginDisabled(fill);
+            FloatCVar("Horizon Height", PHOTO_CVAR("Sky.Horizon"), 0.0f, -90.0f, 90.0f, "%.0f deg");
+            FloatCVar("Vertical Scale", PHOTO_CVAR("Sky.VScale"), 1.0f, 0.1f, 5.0f, "%.2f");
+            ImGui::EndDisabled();
+            bool mirror = CVarGetInteger(PHOTO_CVAR("Sky.Mirror"), 0) != 0;
+            if (ImGui::Checkbox("Mirror", &mirror)) {
+                CVarSetInteger(PHOTO_CVAR("Sky.Mirror"), mirror);
+            }
+            ColorCVar("Tint", PHOTO_CVAR("Sky.Tint"), 0xFFFFFF);
+            FloatCVar("Brightness", PHOTO_CVAR("Sky.Brightness"), 1.0f, 0.0f, 1.0f, "%.2f");
+            ColorCVar("Background", PHOTO_CVAR("Sky.FillColor"), 0x000000);
+            if (ImGui::Button("Reset Image Adjustments")) {
+                for (const char* name : { PHOTO_CVAR("Sky.Rotation"), PHOTO_CVAR("Sky.Spin"), PHOTO_CVAR("Sky.FillSphere"),
+                                          PHOTO_CVAR("Sky.Repeats"), PHOTO_CVAR("Sky.Horizon"), PHOTO_CVAR("Sky.VScale"),
+                                          PHOTO_CVAR("Sky.Mirror"), PHOTO_CVAR("Sky.Tint"), PHOTO_CVAR("Sky.Brightness"),
+                                          PHOTO_CVAR("Sky.FillColor") }) {
+                    CVarClear(name);
+                }
+            }
+            ImGui::TextDisabled("Right-click a slider to reset it.");
+            break;
+        }
+        default:
+            ImGui::TextDisabled("The level's own sky.");
+            break;
+    }
+    ImGui::PopItemWidth();
+}
+
+static void DrawProjectionControls(WidgetInfo& info) {
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+    FloatCVar("Field of View", PHOTO_CVAR("Fov"), 45.0f, 1.0f, 170.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
+    FloatCVar("Stretch X", PHOTO_CVAR("Stretch.X"), 1.0f, 0.1f, 10.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
+    FloatCVar("Stretch Y", PHOTO_CVAR("Stretch.Y"), 1.0f, 0.1f, 10.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
+    if (ImGui::Button("Reset Projection")) {
+        CVarSetFloat(PHOTO_CVAR("Fov"), 45.0f);
+        CVarClear(PHOTO_CVAR("Stretch.X"));
+        CVarClear(PHOTO_CVAR("Stretch.Y"));
+    }
+
+    ImGui::SeparatorText("Dolly Zoom");
+    bool dolly = PhotoMode_IsDollyZoom();
+    ImGui::BeginDisabled(!PhotoMode_IsActive());
+    if (ImGui::Checkbox("Dolly Zoom (J)", &dolly)) {
+        PhotoMode_SetDollyZoom(dolly);
+    }
+    ImGui::EndDisabled();
+    FloatCVar("Focus Distance", PHOTO_CVAR("Dolly.Distance"), 1000.0f, 100.0f, 10000.0f, "%.0f",
+              ImGuiSliderFlags_Logarithmic);
+    ImGui::TextWrapped("Locks the target (or the point Focus Distance ahead). Move toward or away from it and the "
+                       "FOV changes so it keeps its size while the background warps. L or J turns it off.");
+    ImGui::PopItemWidth();
+}
+
+static void DrawScaleControls(WidgetInfo& info) {
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+    constexpr ImGuiSliderFlags log = ImGuiSliderFlags_Logarithmic;
+    FloatCVar("All Objects", PHOTO_CVAR("Scale.All"), 1.0f, 0.05f, 20.0f, "%.2fx", log);
+    FloatCVar("Width (X)", PHOTO_CVAR("Scale.X"), 1.0f, 0.05f, 20.0f, "%.2fx", log);
+    FloatCVar("Height (Y)", PHOTO_CVAR("Scale.Y"), 1.0f, 0.05f, 20.0f, "%.2fx", log);
+    FloatCVar("Depth (Z)", PHOTO_CVAR("Scale.Z"), 1.0f, 0.05f, 20.0f, "%.2fx", log);
+    ImGui::SeparatorText("Per Category");
+    for (const auto& category : PhotoModeFilters_GetCategories()) {
+        FloatCVar(category.label, PhotoModeFilters_GetScaleCVar(category.category).c_str(), 1.0f, 0.05f, 20.0f,
+                  "%.2fx", log);
+    }
+    if (ImGui::Button("Reset All Scales")) {
+        for (const char* name :
+             { PHOTO_CVAR("Scale.All"), PHOTO_CVAR("Scale.X"), PHOTO_CVAR("Scale.Y"), PHOTO_CVAR("Scale.Z") }) {
+            CVarClear(name);
+        }
+        for (const auto& category : PhotoModeFilters_GetCategories()) {
+            CVarClear(PhotoModeFilters_GetScaleCVar(category.category).c_str());
+        }
+    }
+    ImGui::TextWrapped("Only the drawing is scaled; collision and behavior are unchanged. Level geometry is not "
+                       "affected. Right-click a slider to reset it.");
+    ImGui::PopItemWidth();
+}
+
 static void DrawLevelPicker(WidgetInfo& info) {
     const auto& levels = PhotoMode_GetLevels();
     if (levels.empty()) {
@@ -315,7 +495,7 @@ void GhostshipMenu::AddMenuPhotoMode() {
     AddWidget(path, "Camera", WIDGET_SEPARATOR_TEXT);
     AddWidget(path, "Field of View", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar(PHOTO_CVAR("Fov"))
-        .Options(FloatSliderOptions().Min(5.0f).Max(120.0f).Step(1.0f).DefaultValue(45.0f).Format("%.0f"));
+        .Options(FloatSliderOptions().Min(1.0f).Max(170.0f).Step(1.0f).DefaultValue(45.0f).Format("%.0f"));
     AddWidget(path, "Move Speed", WIDGET_CVAR_SLIDER_FLOAT)
         .CVar(PHOTO_CVAR("MoveSpeed"))
         .Options(FloatSliderOptions().Min(1.0f).Max(200.0f).Step(1.0f).DefaultValue(40.0f).Format("%.0f"));
@@ -460,6 +640,16 @@ void GhostshipMenu::AddMenuPhotoMode() {
             .CVar(category.cvarName)
             .Options(CheckboxOptions().DefaultValue(true).Tooltip(category.tooltip));
     }
+
+    AddSidebarEntry("Photo Mode", "Visual FX", 2);
+    WidgetPath fxPath = { "Photo Mode", "Visual FX", SECTION_COLUMN_1 };
+    AddWidget(fxPath, "Skybox", WIDGET_SEPARATOR_TEXT);
+    AddWidget(fxPath, "PhotoModeSkybox", WIDGET_CUSTOM).CustomFunction(DrawSkyboxControls);
+    fxPath.column = SECTION_COLUMN_2;
+    AddWidget(fxPath, "Projection", WIDGET_SEPARATOR_TEXT);
+    AddWidget(fxPath, "PhotoModeProjection", WIDGET_CUSTOM).CustomFunction(DrawProjectionControls);
+    AddWidget(fxPath, "Object Scale", WIDGET_SEPARATOR_TEXT);
+    AddWidget(fxPath, "PhotoModeScale", WIDGET_CUSTOM).CustomFunction(DrawScaleControls);
 }
 
 } // namespace GhostshipGui

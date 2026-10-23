@@ -275,6 +275,7 @@ void geo_process_perspective(struct GraphNodePerspective *node) {
         gSPPerspNormalize(gDisplayListHead++, perspNorm);
 
         gSPMatrix(gDisplayListHead++, VIRTUAL_TO_PHYSICAL(mtx), G_MTX_PROJECTION | G_MTX_LOAD | G_MTX_NOPUSH);
+        PhotoMode_ApplyProjectionStretch();
 
         // Apply mirror mode transform after perspective projection.
         // Key on Mario's object rather than the play mode so the world stays mirrored
@@ -587,7 +588,9 @@ void geo_process_background(struct GraphNodeBackground *node) {
 
     FrameInterpolation_RecordOpenChild("geo_process_background", (uintptr_t)node);
 
-    if (node->fnNode.func != NULL) {
+    if (PhotoMode_RenderSkybox((void **) &list)) {
+        // Photo mode replaced the sky.
+    } else if (node->fnNode.func != NULL) {
         list = node->fnNode.func(GEO_CONTEXT_RENDER, &node->fnNode.node,
                                  (struct AllocOnlyPool *) gMatStack[gMatStackIndex]);
     }
@@ -943,8 +946,10 @@ void geo_process_object(struct Object *node) {
             mtxf_mul(gMatStack[gMatStackIndex + 1], mtxf, gMatStack[gMatStackIndex]);
         }
 
-        mtxf_scale_vec3f(gMatStack[gMatStackIndex + 1], gMatStack[gMatStackIndex + 1],
-                         node->header.gfx.scale);
+        Vec3f drawScale;
+        vec3f_copy(drawScale, node->header.gfx.scale);
+        PhotoMode_ScaleObject(node, drawScale);
+        mtxf_scale_vec3f(gMatStack[gMatStackIndex + 1], gMatStack[gMatStackIndex + 1], drawScale);
 
         node->header.gfx.throwMatrix = &gMatStack[++gMatStackIndex];
         node->header.gfx.cameraToObject[0] = gMatStack[gMatStackIndex][3][0];
