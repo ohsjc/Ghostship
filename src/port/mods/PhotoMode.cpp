@@ -1,6 +1,7 @@
 #include "PhotoMode.h"
 #include "BetterLevelSelect.h"
 #include "PhotoModeFilters.h"
+#include "PhotoModeTracks.h"
 
 #include <cmath>
 #include <libultraship/bridge/consolevariablebridge.h>
@@ -62,6 +63,7 @@ struct PhotoModeState {
     Vec3f pos = { 0, 0, 0 };
     f32 yaw = 0;   // radians, SM64 convention (0 = +Z, increasing toward +X)
     f32 pitch = 0; // radians, positive looks up
+    f32 roll = 0;  // radians, screen rotation
     Vec3f vel = { 0, 0, 0 };
     f32 yawVel = 0;
     f32 pitchVel = 0;
@@ -178,6 +180,7 @@ void Activate(bool fromSpawn) {
         sPhoto.pitch = atan2f(dy, sqrtf(dx * dx + dz * dz));
     }
 
+    sPhoto.roll = 0.0f;
     vec3f_set(sPhoto.vel, 0, 0, 0);
     sPhoto.yawVel = 0;
     sPhoto.pitchVel = 0;
@@ -192,8 +195,26 @@ void Activate(bool fromSpawn) {
     sPhoto.state = State::Active;
 }
 
+void WriteCamera(struct Camera* c);
+
 void UpdateFreeCamera(struct Camera* c) {
     const InputSnapshot& in = sPhoto.input;
+
+    if ((in.buttonPressed & START_BUTTON) && sPhoto.state == State::Active) {
+        SetFrozen(!sPhoto.frozen);
+    }
+    if (sPhoto.frozen) {
+        // Dialogs and cutscenes may clear time stop; keep the scene paused.
+        SetFrozen(true);
+    }
+
+    // A playing camera track drives the camera; manual controls are ignored.
+    PhotoModePose trackPose;
+    if (PhotoModeTracks_Advance(&trackPose)) {
+        PhotoMode_SetPose(trackPose);
+        WriteCamera(c);
+        return;
+    }
 
     f32 smoothing = CVarGetFloat(PHOTO_CVAR("Smoothing"), 0.6f);
     smoothing = smoothing < 0.0f ? 0.0f : (smoothing > 0.95f ? 0.95f : smoothing);
@@ -277,6 +298,16 @@ void UpdateFreeCamera(struct Camera* c) {
         sPhoto.pos[i] = sPhoto.pos[i] > 30000.0f ? 30000.0f : (sPhoto.pos[i] < -30000.0f ? -30000.0f : sPhoto.pos[i]);
     }
 
+    // Roll on D-pad left/right.
+    f32 rollSpeed = DegToRad(1.5f);
+    if (in.buttonDown & L_JPAD) {
+        sPhoto.roll -= rollSpeed;
+    }
+    if (in.buttonDown & R_JPAD) {
+        sPhoto.roll += rollSpeed;
+    }
+    sPhoto.roll = remainderf(sPhoto.roll, 2.0f * kPi);
+
     // FOV on the D-pad, L resets FOV and levels the camera.
     f32 fov = CVarGetFloat(PHOTO_CVAR("Fov"), 45.0f);
     if (in.buttonDown & U_JPAD) {
@@ -288,18 +319,15 @@ void UpdateFreeCamera(struct Camera* c) {
     if (in.buttonPressed & L_TRIG) {
         fov = 45.0f;
         sPhoto.pitch = 0.0f;
+        sPhoto.roll = 0.0f;
     }
     fov = fov < 5.0f ? 5.0f : (fov > 120.0f ? 120.0f : fov);
     CVarSetFloat(PHOTO_CVAR("Fov"), fov);
 
-    if ((in.buttonPressed & START_BUTTON) && sPhoto.state == State::Active) {
-        SetFrozen(!sPhoto.frozen);
-    }
-    if (sPhoto.frozen) {
-        // Dialogs and cutscenes may clear time stop; keep the scene paused.
-        SetFrozen(true);
-    }
+    WriteCamera(c);
+}
 
+void WriteCamera(struct Camera* c) {
     f32 cosPitch = cosf(sPhoto.pitch);
     Vec3f focus = {
         sPhoto.pos[0] + sinf(sPhoto.yaw) * cosPitch * 100.0f,
@@ -319,12 +347,13 @@ void UpdateFreeCamera(struct Camera* c) {
     vec3f_copy(gLakituState.goalFocus, focus);
     gLakituState.yaw = c->yaw;
     gLakituState.nextYaw = c->yaw;
-    gLakituState.roll = 0;
+    gLakituState.roll = (s16)(s32)(sPhoto.roll * (65536.0f / (2.0f * kPi)));
     gLakituState.keyDanceRoll = 0;
     vec3s_set(gLakituState.shakeMagnitude, 0, 0, 0);
 }
 
 void Deactivate() {
+    PhotoModeTracks_Stop();
     bool wasActive = sPhoto.state == State::Active;
     if (ControllingScene()) {
         SetFrozen(false);
@@ -599,3 +628,29 @@ const char* PhotoMode_GetStatusText() {
 }
 
 static RegisterShipInitFunc initFunc(Init);
+
+PhotoModePose PhotoMode_GetPose() {
+    PhotoModePose p;
+    for (int i = 0; i < 3; i++) {
+        p.pos[i] = sPhoto.pos[i];
+    }
+    p.yaw = sPhoto.yaw;
+    p.pitch = sPhoto.pitch;
+    p.roll = sPhoto.roll;
+    p.fov = CVarGetFloat(PHOTO_CVAR("Fov"), 45.0f);
+    return p;
+}
+
+void PhotoMode_SetPose(const PhotoModePose& p) {
+    for (int i = 0; i < 3; i++) {
+        sPhoto.pos[i] = p.pos[i];
+        sPhoto.vel[i] = 0.0f;
+    }
+    sPhoto.yaw = p.yaw;
+    sPhoto.pitch = p.pitch > kMaxPitch ? kMaxPitch : (p.pitch < -kMaxPitch ? -kMaxPitch : p.pitch);
+    sPhoto.roll = p.roll;
+    sPhoto.yawVel = 0.0f;
+    sPhoto.pitchVel = 0.0f;
+    f32 fov = p.fov < 5.0f ? 5.0f : (p.fov > 120.0f ? 120.0f : p.fov);
+    CVarSetFloat(PHOTO_CVAR("Fov"), fov);
+}

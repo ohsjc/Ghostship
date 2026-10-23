@@ -65,6 +65,16 @@ For a quick compile check before committing, run `tools/wsl/syntax-check.sh`, wh
   - It maps behavior scripts to categories (Enemies, Wildlife, Coins, Boxes, …) and applies the presets.
   - Unlisted behaviors fall into "Other".
   - The menu page is "Photo Mode → Visibility".
+- `src/port/mods/PhotoModeTracks.{h,cpp}` holds camera tracks: keyframed camera paths.
+  - Catmull-Rom interpolation on position, yaw, pitch, roll and FOV. Angles are unwrapped to take the shortest turn.
+  - Playback advances 1/30 s per game frame inside the free camera update. While a track plays, `UpdateFreeCamera` uses `PhotoMode_SetPose()` and skips manual input; Start still freezes time.
+  - Tracks are saved as JSON in `<game folder>/photomode_tracks/<name>.json`. The file also stores the level and area.
+  - The menu page is "Photo Mode → Camera Tracks".
+- `src/port/ui/PhotoModeOverlay.{h,cpp}` is an always-shown, invisible `GuiWindow` registered in `GhostshipGui.cpp`. It:
+  - Polls the track hotkeys with ImGui (skipped when a text field has focus).
+  - Draws the path preview projected onto the "Main Game" rect. The projection is roll-aware and matches `mtxf_rotate_xy`.
+  - Draws the playback countdown.
+- The C++ pose API is `PhotoMode_GetPose()` / `PhotoMode_SetPose()`. Pose angles are in radians; roll is written to `gLakituState.roll` (s16).
 - `src/port/mods/BetterLevelSelect.{h,cpp}` exposes its level/act table through `BetterLevelSelect_GetEntries()`.
 
 New `.cpp` files under `src/port/` are picked up automatically by CMake's GLOB_RECURSE.
@@ -115,6 +125,13 @@ All CVars are `gEnhancements.PhotoMode.*`, via `CVAR_ENHANCEMENT("PhotoMode.X")`
 | `IgnoreDrawDistance` | 1 |
 | `HideHud` | 1 |
 | `Show.<Category>` | 1 (0 hides the category) |
+| `Tracks.Loop` | 0 |
+| `Tracks.Easing` | 1 (0 linear, 1 ease whole track, 2 ease each keyframe) |
+| `Tracks.Speed` | 1 |
+| `Tracks.Countdown` | 3 (seconds) |
+| `Tracks.DefaultDuration` | 3 (seconds) |
+| `Tracks.ShowPath` | 1 |
+| `Tracks.ShowHud` | 1 |
 
 The `<Category>` names are `Enemies`, `Bosses`, `Wildlife`, `Characters`, `Coins`, `StarsKeys`, `PowerUps`, `Boxes`, `Switches`, `Signs`, `Doors`, `Scenery`, `Platforms`, `Hazards`, `NaturalEffects`, `GameEffects` and `Other`.
 
@@ -125,8 +142,9 @@ The presets are Show Everything, Nature Documentary, Creatures Only and Empty La
 - Right stick, C-buttons or mouse: look.
 - A / B: up / down.
 - Hold R: fast. Hold Z: slow.
-- D-pad up/down: FOV.
-- L: reset FOV and level the camera.
+- D-pad up/down: FOV. D-pad left/right: roll.
+- L: reset FOV and roll, and level the camera.
+- Keyboard track hotkeys: K add keyframe, P play/stop, `[` / `]` previous/next keyframe, Delete delete keyframe. None of these keys are in the default N64 keyboard mapping.
 - Start: freeze or unfreeze time.
 - F1 opens the menu. F2 toggles mouse capture.
 

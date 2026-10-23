@@ -39,4 +39,17 @@ void PhotoMode_RequestHere();
 void PhotoMode_Exit();
 bool PhotoMode_CanEnterHere();
 const char* PhotoMode_GetStatusText();
+
+// Free camera pose. Angles are radians: yaw 0 = +Z (increasing toward +X), pitch up is positive,
+// roll is the screen rotation. fov is the vertical field of view in degrees.
+struct PhotoModePose {
+    f32 pos[3];
+    f32 yaw;
+    f32 pitch;
+    f32 roll;
+    f32 fov;
+};
+PhotoModePose PhotoMode_GetPose();
+// Moves the free camera to the pose and stops any momentum.
+void PhotoMode_SetPose(const PhotoModePose& pose);
 #endif

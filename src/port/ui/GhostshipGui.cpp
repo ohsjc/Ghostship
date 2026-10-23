@@ -28,6 +28,7 @@ void C_RunGuiDrawCallbacks();
 #define GHOSTSHIP_HAS_SHADER_SETTINGS 1
 #endif
 #include <libultraship/window/gui/GfxDebuggerWindow.h>
+#include "PhotoModeOverlay.h"
 
 // Invisible host window that fires C mod ImGui callbacks each frame.
 // Overrides Draw() so it never calls ImGui::Begin()/End() itself; the C
@@ -113,6 +114,10 @@ void SetupGuiElements() {
     auto cGuiWindow = std::make_shared<CGuiCallbackWindow>("gWindows.CGuiCallbacks", "##cguicallbacks");
     cGuiWindow->Show();
     gui->AddGuiWindow(cGuiWindow);
+
+    auto photoModeOverlay = std::make_shared<PhotoModeOverlay>("gWindows.PhotoModeOverlay", "##photomodeoverlay");
+    photoModeOverlay->Show();
+    gui->AddGuiWindow(photoModeOverlay);
 
     mGhostshipMenu = std::make_shared<GhostshipMenu>(CVAR_WINDOW("Menu"), "Settings Menu");
     gui->SetMenu(mGhostshipMenu);
