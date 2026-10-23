@@ -81,8 +81,8 @@ void BuildCategoryMap() {
 
     Add(Cat::Wildlife,
         { bhvButterfly, bhvTripletButterfly, bhvBird, bhvEndBirds1, bhvEndBirds2, bhvFishGroup, bhvFish,
-          bhvFishCommon, bhvFishSpawner, bhvManyBlueFishSpawner, bhvFewBlueFishSpawner, bhvBlueFish,
-          bhvTankFishGroup, bhvCheepCheep, bhvChirpChirp, bhvChirpChirpUnused, bhvBub, bhvHoot, bhvMantaRay,
+          bhvFishSpawner, bhvManyBlueFishSpawner, bhvFewBlueFishSpawner, bhvBlueFish,
+          bhvTankFishGroup, bhvChirpChirp, bhvChirpChirpUnused, bhvBub, bhvHoot, bhvMantaRay,
           bhvDorrie, bhvUkiki, bhvMacroUkiki, bhvMips, bhvPenguinBaby, bhvSmallPenguin, bhvSLWalkingPenguin,
           bhvRacingPenguin, bhvTuxiesMother });
 

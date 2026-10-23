@@ -140,6 +140,7 @@ The presets are Show Everything, Nature Documentary, Creatures Only and Empty La
 - The Windows CMake configure needs **Developer Mode** turned on, or the ImGui symlink at `CMakeLists.txt:580` fails ("required privilege is not held").
 - The Windows build script runs `git checkout -f` in `Ghostship-src`, so edits made there are lost.
 - The Windows build needs `ghostship.o2r` (the `GeneratePortO2R` target) alongside the exe. `sm64.o2r` is extracted from the ROM and is already in the game folder.
+- `include/behavior_data.h` declares some behaviors that are never defined, such as `bhvCheepCheep` and `bhvFishCommon`. Using them causes a link error (LNK2019) that the syntax check can't catch. Check the names against the definitions in `data/behavior_data.c`.
 
 ## Working with the user
 
