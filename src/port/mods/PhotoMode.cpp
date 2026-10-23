@@ -1,6 +1,7 @@
 #include "PhotoMode.h"
 #include "BetterLevelSelect.h"
 #include "PhotoModeFilters.h"
+#include "PhotoModeSpawner.h"
 #include "PhotoModeTracks.h"
 
 #include <cmath>
@@ -485,6 +486,7 @@ void WriteCamera(struct Camera* c) {
 }
 
 void Deactivate() {
+    PhotoModeSpawner_QueueRemove();
     sPhoto.dolly = false;
     sPhoto.camMode = PhotoModeCameraMode::Free;
     sPhoto.target = nullptr;
@@ -638,6 +640,7 @@ extern "C" bool PhotoMode_UpdateMario(void) {
 }
 
 extern "C" void PhotoMode_ProcessInput(void) {
+    PhotoModeSpawner_ProcessPending();
     if (!ControllingScene()) {
         return;
     }
@@ -668,6 +671,7 @@ extern "C" void PhotoMode_ProcessInput(void) {
 }
 
 extern "C" s32 PhotoMode_OnSetCurrentLevel(s32 levelNum) {
+    PhotoModeSpawner_OnLevelChanged();
     if (sPhoto.state != State::Warping || levelNum != sPhoto.targetLevel) {
         return 0;
     }

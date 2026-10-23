@@ -10,8 +10,10 @@ It has C game code (decomp) plus a C++ port layer built on libultraship.
 This fork adds **Photo Mode**: a first-person free-camera utility for capturing photos and video of
 running levels, like Pokémon Snap. Enemies behave naturally, as if Mario isn't there.
 
-- Phase 1 is **done** and working on Windows: free camera, level/act select, Mario presence modes, time freeze, FOV, menu UI.
-- Planned next: camera angles and roll, effects/filters, screenshot and video capture, more structure and options.
+- Photo Mode includes the free camera, level/act selection, Mario presence modes, camera tracks and modes,
+  visibility filters, visual effects, and the initial Flora & Fauna controls.
+- Flora & Fauna supports reversible per-category density reduction, nearby duplication of a curated set
+  of independent actors, and an experimental cross-level spawn list. Windows runtime testing is pending.
 
 ## Where things live
 
@@ -65,6 +67,30 @@ For a quick compile check before committing, run `tools/wsl/syntax-check.sh`, wh
   - It maps behavior scripts to categories (Enemies, Wildlife, Coins, Boxes, …) and applies the presets.
   - Unlisted behaviors fall into "Other".
   - The menu page is "Photo Mode → Visibility".
+- `src/port/mods/PhotoModeSpawner.{h,cpp}` handles flora/fauna density, safe duplication and camera-position
+  spawning. The menu page is "Photo Mode → Flora & Fauna".
+  - Density CVars are `PhotoMode.Density.<Category>` (0–100, default 100); filtering is render-only and
+    uses a stable hash of the object-pool slot and behavior, so the same objects remain hidden as the
+    percentage changes.
+  - Spawning and duplication are queued from the UI/hotkey and processed by `PhotoMode_ProcessInput()`
+    on the game thread. The object pool has 1,024 slots; spawning stops with 32 slots reserved for the
+    level.
+  - The curated cross-level actors are Goomba, Bob-omb, Small Bully, Spindrift, Scuttlebug, Fly Guy,
+    Snufit, Swoop, Piranha Plant, Small Penguin, Butterfly and Bubbly Tree. These behaviors don't switch
+    their own model IDs. Their OTR geo layouts are parsed on demand into a 128 KiB runtime pool and
+    assigned to an unused model slot. This path is experimental and must be tested in the Windows build.
+    The actor's usual model ID is preferred when that slot is empty. Bob-omb *requires* it, because its
+    respawner hard-codes `MODEL_BLACK_BOBOMB`.
+  - Spawned objects get `parentObj = self`. Goomba/Bully/Scuttlebug write into their parent (triplet
+    spawner, boss), so the default parent (Mario) or a cloned source's spawner would be corrupted.
+  - Removing a spawned fish school deletes its `bhvFish` children directly.
+  - Fish School uses the level's existing `bhvFishSpawner`; it is offered only when a fish model is
+    already loaded and the camera is over water. It creates the small (five-fish) blue school variant.
+  - Multiply buttons duplicate only currently active objects from the supported catalog; they do not
+    clone arbitrary behaviors, bosses, paths, doors or scripted objects. Ground copies require a nearby
+    floor; water schools require water. "Remove Spawned" removes all objects created through this feature.
+  - Object counts and active-native labels shown in the menu are refreshed on the game thread and read
+    through atomics; the UI does not inspect the live object pool.
 - `src/port/mods/PhotoModeTracks.{h,cpp}` holds camera tracks: keyframed camera paths.
   - Catmull-Rom interpolation on position, yaw, pitch, roll and FOV. Angles are unwrapped to take the shortest turn.
   - Playback advances 1/30 s per game frame inside the free camera update. While a track plays, `UpdateFreeCamera` uses `PhotoMode_SetPose()` and skips manual input; Start still freezes time.
@@ -103,9 +129,9 @@ New `.cpp` files under `src/port/` are picked up automatically by CMake's GLOB_R
 ### Game-code hooks (all `#include "port/mods/PhotoMode.h"`)
 | File | Hook |
 |---|---|
-| `src/game/level_update.c/.h` | Adds `level_is_in_normal_play_mode()` and `warp_to_level_default_spawn()`. Hooks `lvl_set_current_level` (act and act-select skip) and `init_level` (no intro cutscene). |
+| `src/game/level_update.c/.h` | Adds `level_is_in_normal_play_mode()` and `warp_to_level_default_spawn()`. Hooks `lvl_set_current_level` (act and act-select skip; also clears spawner caches) and `init_level` (no intro cutscene). |
 | `src/game/mario.c` | `execute_mario_action`: when `PhotoMode_UpdateMario()` returns true, it returns early. Mario is invisible and intangible (`oIntangibleTimer = -1`), parked or following the camera. |
-| `src/game/game_init.c` | `PhotoMode_ProcessInput()` runs after input is read. It snapshots then zeroes the controllers, so Mario, pause and dialogs see nothing. |
+| `src/game/game_init.c` | `PhotoMode_ProcessInput()` runs after input is read. It processes queued Photo Mode spawn actions, then snapshots and zeroes the controllers, so Mario, pause and dialogs see nothing. |
 | `src/game/camera.c` | `geo_camera_fov`: FOV override. |
 | `src/game/object_helpers.c` | `geo_switch_area`: room visibility is probed from the camera position. |
 | `src/game/hud.c` | `render_hud`: hidden when `PhotoMode.HideHud` is on. |
@@ -136,6 +162,7 @@ All CVars are `gEnhancements.PhotoMode.*`, via `CVAR_ENHANCEMENT("PhotoMode.X")`
 | `IgnoreDrawDistance` | 1 |
 | `HideHud` | 1 |
 | `Show.<Category>` | 1 (0 hides the category) |
+| `Density.<Category>` | 100 (0–100% render-only visibility) |
 | `Orbit.AutoSpeed` | 0 (deg/s) |
 | `LockOn.Follow` | 1 |
 | `LockOn.AimSmoothing` | 0.5 |
@@ -169,7 +196,7 @@ The presets are Show Everything, Nature Documentary, Creatures Only and Empty La
 - Hold R: fast. Hold Z: slow.
 - D-pad up/down: FOV (1–170, finer below 20). D-pad left/right: roll.
 - L: reset FOV and roll, and level the camera.
-- Keyboard track hotkeys: K add keyframe, P play/stop, `[` / `]` previous/next keyframe, Delete delete keyframe, O orbit, U lock-on (press again to drop), Y clear target, J dolly zoom. None of these keys are in the default N64 keyboard mapping.
+- Keyboard hotkeys: K add keyframe, P play/stop, `[` / `]` previous/next keyframe, Delete delete keyframe, O orbit, U lock-on (press again to drop), Y clear target, J dolly zoom, G spawn the selected Flora & Fauna object. None of these keys are in the default N64 keyboard mapping.
 - Start: freeze or unfreeze time.
 - F1 opens the menu. F2 toggles mouse capture.
 

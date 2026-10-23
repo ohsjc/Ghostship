@@ -1,6 +1,7 @@
 #include "PhotoModeFilters.h"
 
 #include <initializer_list>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <libultraship/bridge/consolevariablebridge.h>
@@ -214,7 +215,39 @@ bool PhotoModeFilters_IsHidden(const Object* obj) {
         return false;
     }
     Cat cat = CategoryOf(obj);
-    return CVarGetInteger(sCategories[(size_t)cat].cvarName, 1) == 0;
+    if (CVarGetInteger(sCategories[(size_t)cat].cvarName, 1) == 0) {
+        return true;
+    }
+
+    const int density = CVarGetInteger(PhotoModeFilters_GetDensityCVar(cat).c_str(), 100);
+    if (density >= 100) {
+        return false;
+    }
+    if (density <= 0) {
+        return true;
+    }
+
+    const u32 index = (u32)(obj - &gObjectPool[0]);
+    u32 hash = index * 0x9E3779B9u ^ (u32)(uintptr_t)obj->behavior;
+    hash ^= hash >> 16;
+    hash *= 0x7FEB352Du;
+    hash ^= hash >> 15;
+    return (int)(hash % 100) >= density;
+}
+
+const std::string& PhotoModeFilters_GetDensityCVar(PhotoModeCategory cat) {
+    static std::vector<std::string> sNames;
+    if (sNames.empty()) {
+        for (const auto& info : sCategories) {
+            std::string name = info.cvarName;
+            size_t at = name.find(".Show.");
+            if (at != std::string::npos) {
+                name.replace(at, 6, ".Density.");
+            }
+            sNames.push_back(name);
+        }
+    }
+    return sNames[(size_t)cat];
 }
 
 const std::string& PhotoModeFilters_GetScaleCVar(PhotoModeCategory cat) {

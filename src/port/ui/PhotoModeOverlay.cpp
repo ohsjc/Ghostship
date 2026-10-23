@@ -10,6 +10,7 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 
 #include "port/mods/PhotoMode.h"
+#include "port/mods/PhotoModeSpawner.h"
 #include "port/mods/PhotoModeTracks.h"
 #include "port/mods/PhotoModeVisuals.h"
 #include "port/ui/cvar_prefixes.h"
@@ -117,6 +118,9 @@ void HandleHotkeys() {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_J, false)) {
         PhotoMode_SetDollyZoom(!PhotoMode_IsDollyZoom());
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_G, false)) {
+        PhotoModeSpawner_QueueSpawnSelected();
     }
 }
 

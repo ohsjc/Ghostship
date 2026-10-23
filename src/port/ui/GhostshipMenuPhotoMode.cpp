@@ -2,11 +2,14 @@
 #include "GhostshipGui.hpp"
 #include "port/mods/PhotoMode.h"
 #include "port/mods/PhotoModeFilters.h"
+#include "port/mods/PhotoModeSpawner.h"
 #include "port/mods/PhotoModeTracks.h"
 #include "port/mods/PhotoModeVisuals.h"
 
 #include <imgui.h>
 #include <libultraship/bridge/consolevariablebridge.h>
+
+#include "game/object_list_processor.h"
 
 namespace GhostshipGui {
 
@@ -416,6 +419,84 @@ static void DrawScaleControls(WidgetInfo& info) {
     ImGui::PopItemWidth();
 }
 
+static void DrawFloraFauna(WidgetInfo& info) {
+    ImGui::Text("Objects: %d / %d  |  Photo Mode spawns: %d", PhotoModeSpawner_GetActiveObjectCount(),
+                OBJECT_POOL_CAPACITY, PhotoModeSpawner_GetSpawnedObjectCount());
+    ImGui::TextDisabled("Spawning pauses with 32 object slots left for the level.");
+
+    ImGui::SeparatorText("Spawn at Camera");
+    const std::size_t optionCount = PhotoModeSpawner_GetOptionCount();
+    std::vector<std::string> labels;
+    std::vector<const char*> items;
+    labels.reserve(optionCount);
+    items.reserve(optionCount);
+    for (std::size_t i = 0; i < optionCount; i++) {
+        labels.emplace_back(PhotoModeSpawner_GetOptionName(i));
+        if (PhotoModeSpawner_RequiresWater(i)) {
+            labels.back() += " (water + native fish model required)";
+        } else {
+            labels.back() +=
+                PhotoModeSpawner_IsNativeInLevel(i) ? " (native actor active)" : " (experimental cross-level)";
+        }
+    }
+    for (const std::string& label : labels) {
+        items.push_back(label.c_str());
+    }
+
+    int selected = PhotoModeSpawner_GetSelectedOption();
+    if (!items.empty() && ImGui::Combo("Object", &selected, items.data(), (int)items.size())) {
+        PhotoModeSpawner_SetSelectedOption(selected);
+    }
+    ImGui::BeginDisabled(!PhotoMode_IsActive() || items.empty());
+    if (ImGui::Button("Spawn (G)")) {
+        PhotoModeSpawner_QueueSpawn(selected);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Remove Spawned")) {
+        PhotoModeSpawner_QueueRemove();
+    }
+    ImGui::EndDisabled();
+    ImGui::TextWrapped("The experimental list loads simple actor models on demand. Ground objects are placed "
+                       "on the floor below the camera; flyers spawn at camera height. Fish schools need a water "
+                       "surface and a fish model already loaded by the level.");
+
+    ImGui::SeparatorText("Increase Density");
+    ImGui::BeginDisabled(!PhotoMode_IsActive());
+    if (ImGui::Button("Multiply Enemies")) {
+        PhotoModeSpawner_QueueMultiply(PhotoModeCategory::Enemies);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Multiply Wildlife")) {
+        PhotoModeSpawner_QueueMultiply(PhotoModeCategory::Wildlife);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Multiply Trees")) {
+        PhotoModeSpawner_QueueMultiply(PhotoModeCategory::Scenery);
+    }
+    ImGui::EndDisabled();
+    ImGui::TextWrapped("Only the supported, independent actors are duplicated. Copies are placed nearby "
+                       "on valid ground when possible.");
+
+    ImGui::SeparatorText("Reduce Density");
+    ImGui::TextWrapped("Render-only and reversible: objects keep behaving normally. 0% hides a category; "
+                       "100% shows it all.");
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.6f);
+    for (const auto& category : PhotoModeFilters_GetCategories()) {
+        const std::string& cvar = PhotoModeFilters_GetDensityCVar(category.category);
+        int density = CVarGetInteger(cvar.c_str(), 100);
+        if (ImGui::SliderInt(category.label, &density, 0, 100, "%d%%")) {
+            CVarSetInteger(cvar.c_str(), density);
+        }
+    }
+    ImGui::PopItemWidth();
+
+    const std::string status = PhotoModeSpawner_GetStatus();
+    if (!status.empty()) {
+        ImGui::Separator();
+        ImGui::TextWrapped("%s", status.c_str());
+    }
+}
+
 static void DrawLevelPicker(WidgetInfo& info) {
     const auto& levels = PhotoMode_GetLevels();
     if (levels.empty()) {
@@ -640,6 +721,10 @@ void GhostshipMenu::AddMenuPhotoMode() {
             .CVar(category.cvarName)
             .Options(CheckboxOptions().DefaultValue(true).Tooltip(category.tooltip));
     }
+
+    AddSidebarEntry("Photo Mode", "Flora & Fauna", 2);
+    WidgetPath floraPath = { "Photo Mode", "Flora & Fauna", SECTION_COLUMN_1 };
+    AddWidget(floraPath, "Spawning and Density", WIDGET_CUSTOM).CustomFunction(DrawFloraFauna);
 
     AddSidebarEntry("Photo Mode", "Visual FX", 2);
     WidgetPath fxPath = { "Photo Mode", "Visual FX", SECTION_COLUMN_1 };
