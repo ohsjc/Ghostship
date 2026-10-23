@@ -40,7 +40,12 @@ running levels, like Pokémon Snap. Enemies behave naturally, as if Mario isn't 
    - It produces the artifact `Ghostship-photo-mode-windows`, containing the exe, `ghostship.o2r`, `tcc.dll` and `.tcc/`.
    - The upstream `main.yml` ignores this branch.
 
-There is **no Linux build in WSL**: dependencies need `sudo apt`, which hasn't been set up. Compile checking happens through the Windows build.
+There is **no full Linux build in WSL**: dependencies need `sudo apt`, which hasn't been set up.
+
+For a quick compile check before committing, run `tools/wsl/syntax-check.sh`, which takes about 10 seconds.
+- It runs `g++`/`gcc -fsyntax-only` against the real headers, with the third-party headers cached in `~/.cache/ghostship-syntax-check`.
+- With no arguments it checks the changed `.c`/`.cpp` files. You can also pass files explicitly.
+- It doesn't link, so the Windows build is still the final check.
 
 ### GitHub accounts
 
@@ -56,6 +61,10 @@ There is **no Linux build in WSL**: dependencies need `sudo apt`, which hasn't b
 - `src/port/mods/PhotoMode.h` declares the C hooks (`extern_s`) and the C++ UI API.
 - `src/port/mods/PhotoMode.cpp` holds all the logic. It is registered with `RegisterShipInitFunc`.
 - `src/port/ui/GhostshipMenuPhotoMode.cpp` is the "Photo Mode" menu (F1). It is registered in `GhostshipMenu::OnInit` and declared in `GhostshipMenu.h`.
+- `src/port/mods/PhotoModeFilters.{h,cpp}` holds the object visibility filters.
+  - It maps behavior scripts to categories (Enemies, Wildlife, Coins, Boxes, …) and applies the presets.
+  - Unlisted behaviors fall into "Other".
+  - The menu page is "Photo Mode → Visibility".
 - `src/port/mods/BetterLevelSelect.{h,cpp}` exposes its level/act table through `BetterLevelSelect_GetEntries()`.
 
 New `.cpp` files under `src/port/` are picked up automatically by CMake's GLOB_RECURSE.
@@ -80,6 +89,7 @@ New `.cpp` files under `src/port/` are picked up automatically by CMake's GLOB_R
 | `src/game/object_helpers.c` | `geo_switch_area`: room visibility is probed from the camera position. |
 | `src/game/hud.c` | `render_hud`: hidden when `PhotoMode.HideHud` is on. |
 | `src/engine/surface_load.c` | Object collision distance is measured from the camera instead of Mario. Never load all collision: the surface pools are fixed and unchecked, so overflow corrupts memory. |
+| `src/game/rendering_graph_node.c` | `geo_process_object`: skips only the draw block when `PhotoMode_ShouldHideObject()` is true. The matrices and `cameraToObject` are still computed, so held objects and sound keep working. Filters apply only while `CameraOwned()`. |
 
 The free camera itself is a `CameraUpdate` listener at HIGH priority. It writes `Camera` and `gLakituState`.
 
@@ -104,6 +114,11 @@ All CVars are `gEnhancements.PhotoMode.*`, via `CVAR_ENHANCEMENT("PhotoMode.X")`
 | `Fov` | 45 |
 | `IgnoreDrawDistance` | 1 |
 | `HideHud` | 1 |
+| `Show.<Category>` | 1 (0 hides the category) |
+
+The `<Category>` names are `Enemies`, `Bosses`, `Wildlife`, `Characters`, `Coins`, `StarsKeys`, `PowerUps`, `Boxes`, `Switches`, `Signs`, `Doors`, `Scenery`, `Platforms`, `Hazards`, `NaturalEffects`, `GameEffects` and `Other`.
+
+The presets are Show Everything, Nature Documentary, Creatures Only and Empty Landscape.
 
 ### Controls (in photo mode)
 - Left stick: move.
@@ -130,3 +145,4 @@ All CVars are `gEnhancements.PhotoMode.*`, via `CVAR_ENHANCEMENT("PhotoMode.X")`
 
 - Give shell instructions as plain, standard steps, one command per line, with no chained one-liners.
 - The user runs and tests the game on Windows and reports back. Don't assume runtime behaviour has been verified unless they say so.
+- **Don't push to `fork` unless the user asks**, because each push starts a CI build. Committing locally is fine, and the Windows build script needs it.

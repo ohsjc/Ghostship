@@ -20,6 +20,8 @@ extern_s void PhotoMode_ProcessInput(void);
 extern_s s32 PhotoMode_OnSetCurrentLevel(s32 levelNum);
 extern_s bool PhotoMode_GetRoomProbePos(f32* x, f32* y, f32* z);
 extern_s bool PhotoMode_GetFov(f32* fov);
+// True if the object's visibility category is hidden by the photo mode filters.
+extern_s bool PhotoMode_ShouldHideObject(struct Object* obj);
 
 #ifdef __cplusplus
 #include <vector>

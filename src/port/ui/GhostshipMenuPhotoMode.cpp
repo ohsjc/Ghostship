@@ -1,6 +1,7 @@
 #include "GhostshipMenu.h"
 #include "GhostshipGui.hpp"
 #include "port/mods/PhotoMode.h"
+#include "port/mods/PhotoModeFilters.h"
 
 namespace GhostshipGui {
 
@@ -131,6 +132,45 @@ void GhostshipMenu::AddMenuPhotoMode() {
               "L: reset FOV and level the camera\n"
               "Start: freeze / unfreeze time",
               WIDGET_TEXT);
+
+    AddSidebarEntry("Photo Mode", "Visibility", 2);
+    WidgetPath visPath = { "Photo Mode", "Visibility", SECTION_COLUMN_1 };
+
+    AddWidget(visPath, "Presets", WIDGET_SEPARATOR_TEXT);
+    struct PresetButton {
+        const char* name;
+        PhotoModeFilterPreset preset;
+        const char* tooltip;
+    };
+    static const PresetButton presets[] = {
+        { "Show Everything", PhotoModeFilterPreset::ShowAll, "Shows every object category." },
+        { "Nature Documentary", PhotoModeFilterPreset::NatureDocumentary,
+          "Hides the 'video game' clutter (coins, stars, power-ups, boxes, switches, signs, sparkles) "
+          "so the Mushroom Kingdom's wildlife can be observed in its natural habitat." },
+        { "Creatures Only", PhotoModeFilterPreset::CreaturesOnly,
+          "Shows enemies, bosses, wildlife and characters with the scenery and platforms they live on." },
+        { "Empty Landscape", PhotoModeFilterPreset::EmptyLandscape,
+          "Hides everything except trees, scenery, platforms and natural effects." },
+    };
+    for (const auto& preset : presets) {
+        PhotoModeFilterPreset value = preset.preset;
+        AddWidget(visPath, preset.name, WIDGET_BUTTON)
+            .Options(ButtonOptions().Tooltip(preset.tooltip).Color(THEME_COLOR))
+            .Callback([value](WidgetInfo& info) { PhotoModeFilters_ApplyPreset(value); });
+    }
+    AddWidget(visPath,
+              "Filters apply only while photo mode is active.\n"
+              "Hidden objects keep moving and making sounds;\n"
+              "they just aren't drawn.",
+              WIDGET_TEXT);
+
+    visPath.column = SECTION_COLUMN_2;
+    AddWidget(visPath, "Show in Photo Mode", WIDGET_SEPARATOR_TEXT);
+    for (const auto& category : PhotoModeFilters_GetCategories()) {
+        AddWidget(visPath, category.label, WIDGET_CVAR_CHECKBOX)
+            .CVar(category.cvarName)
+            .Options(CheckboxOptions().DefaultValue(true).Tooltip(category.tooltip));
+    }
 }
 
 } // namespace GhostshipGui

@@ -1,5 +1,6 @@
 #include "PhotoMode.h"
 #include "BetterLevelSelect.h"
+#include "PhotoModeFilters.h"
 
 #include <cmath>
 #include <libultraship/bridge/consolevariablebridge.h>
@@ -526,6 +527,10 @@ extern "C" bool PhotoMode_GetFov(f32* fov) {
     }
     *fov = CVarGetFloat(PHOTO_CVAR("Fov"), 45.0f);
     return true;
+}
+
+extern "C" bool PhotoMode_ShouldHideObject(struct Object* obj) {
+    return CameraOwned() && PhotoModeFilters_IsHidden(obj);
 }
 
 // ---- UI API ----

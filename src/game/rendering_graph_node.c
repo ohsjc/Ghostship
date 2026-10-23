@@ -13,6 +13,7 @@
 #include "sm64.h"
 #include "port/interpolation/FrameInterpolation.h"
 #include "port/Matrix.h"
+#include "port/mods/PhotoMode.h"
 
 extern void mirror_mode_apply_projection(void);
 extern int mirror_mode_is_enabled(void);
@@ -955,7 +956,8 @@ void geo_process_object(struct Object *node) {
             geo_set_animation_globals(&node->header.gfx.animInfo, hasAnimation);
         }
 
-        if (obj_is_in_view(&node->header.gfx, gMatStack[gMatStackIndex])) {
+        // Photo mode filters skip drawing only; matrices above are still updated for game logic.
+        if (obj_is_in_view(&node->header.gfx, gMatStack[gMatStackIndex]) && !PhotoMode_ShouldHideObject(node)) {
             Mtx *mtx = alloc_display_list(sizeof(*mtx));
 
             mtxf_to_mtx(mtx, gMatStack[gMatStackIndex]);
